@@ -1,28 +1,13 @@
 /// Module: permissions_group
 ///
-/// TODO1: It might make more sense to just have PermissionsGranter and PermissionsRevoker
-/// We DO want to have separate permissions for adding/removing because removing a member is
-/// a more privileged/dangerous operation than adding a member.
-/// So, I propose to either have PermissionsManager + separate MemberAdder/MemberRemover
-/// Or just PermissionsGranter + PermissionsRevoker
-/// For now, we will keep PermissionsManager + MemberAdder/MemberRemover
+/// Provides a flexible permission system for group management with three distinct
+/// permission types:
+/// - `PermissionsManager`: Can grant and revoke permissions for any member
+/// - `MemberAdder`: Can add new members to the group
+/// - `MemberRemover`: Can remove existing members from the group
 ///
-/// TODO2: we currently check and ensure there is always at least one PermissionsManager,
-/// Should we also check for at least one MemberAdder and one MemberRemover?
-/// I guess this is where it starts getting ugly having 3 separate permissions instead of just
-/// granter/revoker. (of course a single PermissionsManager would be even simpler, but as mentioned
-/// above
-/// less flexible. And since we plan on offering this as a library, flexibility is important.)
-/// One other option is to not expose add_member/remove_member functions at all, and leave the
-/// implementation
-/// and gating of those functions to the user of the library.
-///
-/// TODO3: Should we keep the assertions in the functions, or leave the responsibility to the
-/// developer using
-/// this library? I believe it would be ok, if we manage to implement the typed_witness
-/// Auth<Permission> token
-/// pattern. But, until then, I believe we should handle the assertions in this library.
-///
+/// The system ensures there is always at least one `PermissionsManager` to prevent
+/// the group from becoming unmanageable.
 module groups::permissions_group;
 
 use groups::join_policy;
@@ -39,20 +24,22 @@ const ELastPermissionsManager: u64 = 2;
 
 // === Witnesses ===
 
-// TODO4: Would it make sense to make those generic <phantom T> ?
-
 /// Witness type representing the permission to grant or revoke permissions.
 public struct PermissionsManager() has drop;
+
 /// Witness type representing the permission to add members.
 public struct MemberAdder() has drop;
+
 /// Witness type representing the permission to remove members.
 public struct MemberRemover() has drop;
 
 // === Structs ===
 
-// TODO5: does this need to be <phantom T> ?
 /// Authorization state mapping addresses to their granted permissions
 /// represented as TypeNames.
+///
+/// Open question: Should this be generic `<phantom T>` to allow multiple
+/// independent permission systems?
 public struct PermissionsGroup has store {
     permissions: Table<address, VecSet<TypeName>>,
     managers_count: u64,
@@ -60,9 +47,11 @@ public struct PermissionsGroup has store {
 
 // === Public Functions ===
 
-// TODO6: does this need to be generic <T> ?
 /// Creates a new PermissionsGroup with the transaction sender as the initial
 /// manager, adder, and remover.
+///
+/// Open question: Should this be generic `<T>` to scope permissions to a
+/// specific context?
 ///
 /// # Parameters
 /// - `ctx`: Mutable transaction context for the table creation.
@@ -111,6 +100,12 @@ public fun add_member(self: &mut PermissionsGroup, new_member: address, ctx: &Tx
 /// - `self`: Mutable reference to the `PermissionsGroup` state.
 /// - `member`: Address of the member to be removed.
 /// - `ctx`: Transaction context for permission checks.
+///
+/// # Aborts
+/// - If caller does not have `MemberRemover` permission.
+/// - If member does not exist in the PermissionsGroup.
+/// - If member has `PermissionsManager` permission and removing would leave no
+///   `PermissionsManager` remaining.
 public fun remove_member(self: &mut PermissionsGroup, member: address, ctx: &TxContext) {
     // assert caller has MemberRemover permission
     assert!(self.has_permission<MemberRemover>(ctx.sender()), ENotPermitted);
@@ -126,19 +121,12 @@ public fun remove_member(self: &mut PermissionsGroup, member: address, ctx: &TxC
     self.permissions.remove(member);
 }
 
-// TODO7: should we allow this?
-//
-/// I would argue yes. Not sure if we want to issue some sort
-/// of LeftTicket?
-/// Let's see if we go with a MemberCap approach later on,
-/// in which case we would want the user that leaves, to be able
-/// to burn their MemberCap for the rebate.
-
 /// Allows the calling member to leave the PermissionsGroup.
 ///
 /// # Parameters
 /// - `self`: Mutable reference to the `PermissionsGroup` state.
 /// - `ctx`: Transaction context for permission checks.
+///
 /// # Aborts
 /// - If the member does not exist in the PermissionsGroup.
 /// - If the member has `PermissionsManager` permission and leaving would leave no
@@ -164,10 +152,12 @@ public fun leave(self: &mut PermissionsGroup, ctx: &TxContext) {
 ///
 /// # Type Parameters
 /// - `NewPermission`: The permission type to be granted to the member.
+///
 /// # Parameters
 /// - `self`: Mutable reference to the `PermissionsGroup` state.
 /// - `member`: Address of the member to whom the permission will be granted.
 /// - `ctx`: Transaction context for permission checks.
+///
 /// # Aborts
 /// - If the caller does not have `PermissionsManager` permission.
 /// - If the member does not exist in the PermissionsGroup.
@@ -195,14 +185,16 @@ public fun grant_permission<NewPermission: drop>(
 ///
 /// # Type Parameters
 /// - `ExistingPermission`: The permission type to be revoked from the member.
+///
 /// # Parameters
 /// - `self`: Mutable reference to the `PermissionsGroup` state.
 /// - `member`: Address of the member from whom the permission will be revoked.
 /// - `ctx`: Transaction context for permission checks.
+///
 /// # Aborts
 /// - If the caller does not have `PermissionsManager` permission.
-/// - If the member does not exist in the permissions table.
-/// - If revoking the permission would leave no `PermissionsManager` remaining.
+/// - If the member does not exist in the PermissionsGroup.
+/// - If revoking `PermissionsManager` would leave no managers remaining.
 public fun revoke_permission<ExistingPermission: drop>(
     self: &mut PermissionsGroup,
     member: address,
@@ -232,13 +224,16 @@ public fun revoke_permission<ExistingPermission: drop>(
 }
 
 /// Checks if the given address has the specified permission.
+///
 /// # Type Parameters
 /// - `Permission`: The permission type to check for.
+///
 /// # Parameters
 /// - `self`: Reference to the `PermissionsGroup` state.
 /// - `member`: Member address to check for the specified permission.
+///
 /// # Returns
-/// - `bool`: `true` if the address has the permission, `false` otherwise
+/// `true` if the address has the permission, `false` otherwise.
 public fun has_permission<Permission: drop>(self: &PermissionsGroup, member: address): bool {
     self.permissions.borrow(member).contains(&type_name::with_defining_ids<Permission>())
 }
@@ -248,8 +243,9 @@ public fun has_permission<Permission: drop>(self: &PermissionsGroup, member: add
 /// # Parameters
 /// - `self`: Reference to the `PermissionsGroup` state.
 /// - `member`: Address to check for membership.
+///
 /// # Returns
-/// - `bool`: `true` if the address is a member, `false` otherwise
+/// `true` if the address is a member, `false` otherwise.
 public fun is_member(self: &PermissionsGroup, member: address): bool {
     self.permissions.contains(member)
 }

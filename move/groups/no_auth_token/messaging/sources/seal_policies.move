@@ -35,7 +35,15 @@ const ENotPermitted: u64 = 2;
 // === Helper Functions ===
 
 /// Validates that the id has the correct namespace prefix (creator address).
+///
 /// The creator address is used as the namespace to enable single-PTB group creation.
+///
+/// # Parameters
+/// - `group`: Reference to the MessagingGroup
+/// - `id`: The Seal identity bytes to validate
+///
+/// # Returns
+/// `true` if the namespace prefix matches, `false` otherwise.
 fun check_namespace(group: &MessagingGroup, id: &vector<u8>): bool {
     let namespace = group.creator().to_bytes();
     let namespace_len = namespace.length();
@@ -57,16 +65,17 @@ fun check_namespace(group: &MessagingGroup, id: &vector<u8>): bool {
 // === Seal Approve Functions ===
 
 /// Default seal_approve that checks membership.
+///
 /// Use this for simple "all members can decrypt" access control.
 ///
 /// # Parameters
-/// - `id`: The Seal identity bytes (should be [creator_address][nonce])
+/// - `id`: The Seal identity bytes (should be `[creator_address][nonce]`)
 /// - `group`: Reference to the MessagingGroup
 /// - `ctx`: Transaction context
 ///
 /// # Aborts
-/// - If id doesn't have correct namespace prefix (creator address)
-/// - If caller is not a member
+/// - If `id` doesn't have correct namespace prefix (creator address).
+/// - If caller is not a member.
 entry fun seal_approve_member(
     id: vector<u8>,
     group: &MessagingGroup,
@@ -76,18 +85,19 @@ entry fun seal_approve_member(
     assert!(group.is_member(ctx.sender()), ENotMember);
 }
 
-/// Default seal_approve that checks MessagingReader permission.
+/// Default seal_approve that checks `MessagingReader` permission.
+///
 /// Use this for granular "only readers can decrypt" access control.
 /// This allows for temporary read bans while keeping membership.
 ///
 /// # Parameters
-/// - `id`: The Seal identity bytes (should be [creator_address][nonce])
+/// - `id`: The Seal identity bytes (should be `[creator_address][nonce]`)
 /// - `group`: Reference to the MessagingGroup
 /// - `ctx`: Transaction context
 ///
 /// # Aborts
-/// - If id doesn't have correct namespace prefix (creator address)
-/// - If caller doesn't have MessagingReader permission
+/// - If `id` doesn't have correct namespace prefix (creator address).
+/// - If caller doesn't have `MessagingReader` permission.
 entry fun seal_approve_reader(
     id: vector<u8>,
     group: &MessagingGroup,

@@ -40,12 +40,14 @@ The custom <code>seal_approve</code> must be in the same package that was used d
     -  [Custom Implementations](#@Custom_Implementations_1)
 -  [Constants](#@Constants_2)
 -  [Function `check_namespace`](#(messaging=0x0)_seal_policies_check_namespace)
--  [Function `seal_approve_member`](#(messaging=0x0)_seal_policies_seal_approve_member)
     -  [Parameters](#@Parameters_3)
-    -  [Aborts](#@Aborts_4)
--  [Function `seal_approve_reader`](#(messaging=0x0)_seal_policies_seal_approve_reader)
+    -  [Returns](#@Returns_4)
+-  [Function `seal_approve_member`](#(messaging=0x0)_seal_policies_seal_approve_member)
     -  [Parameters](#@Parameters_5)
     -  [Aborts](#@Aborts_6)
+-  [Function `seal_approve_reader`](#(messaging=0x0)_seal_policies_seal_approve_reader)
+    -  [Parameters](#@Parameters_7)
+    -  [Aborts](#@Aborts_8)
 
 
 <pre><code><b>use</b> (groups=0x0)::join_policy;
@@ -114,7 +116,23 @@ The custom <code>seal_approve</code> must be in the same package that was used d
 ## Function `check_namespace`
 
 Validates that the id has the correct namespace prefix (creator address).
+
 The creator address is used as the namespace to enable single-PTB group creation.
+
+
+<a name="@Parameters_3"></a>
+
+### Parameters
+
+- <code>group</code>: Reference to the MessagingGroup
+- <code>id</code>: The Seal identity bytes to validate
+
+
+<a name="@Returns_4"></a>
+
+### Returns
+
+<code><b>true</b></code> if the namespace prefix matches, <code><b>false</b></code> otherwise.
 
 
 <pre><code><b>fun</b> <a href="../messaging/seal_policies.md#(messaging=0x0)_seal_policies_check_namespace">check_namespace</a>(group: &(<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::messaging::MessagingGroup, id: &vector&lt;u8&gt;): bool
@@ -152,24 +170,25 @@ The creator address is used as the namespace to enable single-PTB group creation
 ## Function `seal_approve_member`
 
 Default seal_approve that checks membership.
+
 Use this for simple "all members can decrypt" access control.
 
 
-<a name="@Parameters_3"></a>
+<a name="@Parameters_5"></a>
 
 ### Parameters
 
-- <code>id</code>: The Seal identity bytes (should be [creator_address][nonce])
+- <code>id</code>: The Seal identity bytes (should be <code>[creator_address][nonce]</code>)
 - <code>group</code>: Reference to the MessagingGroup
 - <code>ctx</code>: Transaction context
 
 
-<a name="@Aborts_4"></a>
+<a name="@Aborts_6"></a>
 
 ### Aborts
 
-- If id doesn't have correct namespace prefix (creator address)
-- If caller is not a member
+- If <code>id</code> doesn't have correct namespace prefix (creator address).
+- If caller is not a member.
 
 
 <pre><code><b>entry</b> <b>fun</b> <a href="../messaging/seal_policies.md#(messaging=0x0)_seal_policies_seal_approve_member">seal_approve_member</a>(id: vector&lt;u8&gt;, group: &(<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::messaging::MessagingGroup, ctx: &<a href="../dependencies/sui/tx_context.md#sui_tx_context_TxContext">sui::tx_context::TxContext</a>)
@@ -199,26 +218,27 @@ Use this for simple "all members can decrypt" access control.
 
 ## Function `seal_approve_reader`
 
-Default seal_approve that checks MessagingReader permission.
+Default seal_approve that checks <code>MessagingReader</code> permission.
+
 Use this for granular "only readers can decrypt" access control.
 This allows for temporary read bans while keeping membership.
 
 
-<a name="@Parameters_5"></a>
+<a name="@Parameters_7"></a>
 
 ### Parameters
 
-- <code>id</code>: The Seal identity bytes (should be [creator_address][nonce])
+- <code>id</code>: The Seal identity bytes (should be <code>[creator_address][nonce]</code>)
 - <code>group</code>: Reference to the MessagingGroup
 - <code>ctx</code>: Transaction context
 
 
-<a name="@Aborts_6"></a>
+<a name="@Aborts_8"></a>
 
 ### Aborts
 
-- If id doesn't have correct namespace prefix (creator address)
-- If caller doesn't have MessagingReader permission
+- If <code>id</code> doesn't have correct namespace prefix (creator address).
+- If caller doesn't have <code>MessagingReader</code> permission.
 
 
 <pre><code><b>entry</b> <b>fun</b> <a href="../messaging/seal_policies.md#(messaging=0x0)_seal_policies_seal_approve_reader">seal_approve_reader</a>(id: vector&lt;u8&gt;, group: &(<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::messaging::MessagingGroup, ctx: &<a href="../dependencies/sui/tx_context.md#sui_tx_context_TxContext">sui::tx_context::TxContext</a>)

@@ -46,38 +46,58 @@ Messaging-specific permissions (defined in this module):
 -  [Struct `MessagingGroup`](#(messaging=0x0)_messaging_MessagingGroup)
 -  [Constants](#@Constants_2)
 -  [Function `new`](#(messaging=0x0)_messaging_new)
--  [Function `new_with_encryption`](#(messaging=0x0)_messaging_new_with_encryption)
     -  [Parameters](#@Parameters_3)
     -  [Returns](#@Returns_4)
--  [Function `rotate_encryption_key`](#(messaging=0x0)_messaging_rotate_encryption_key)
+-  [Function `new_with_encryption`](#(messaging=0x0)_messaging_new_with_encryption)
     -  [Parameters](#@Parameters_5)
-    -  [Aborts](#@Aborts_6)
--  [Function `current_encryption_key_version`](#(messaging=0x0)_messaging_current_encryption_key_version)
--  [Function `get_encrypted_key`](#(messaging=0x0)_messaging_get_encrypted_key)
-    -  [Aborts](#@Aborts_7)
--  [Function `get_current_encrypted_key`](#(messaging=0x0)_messaging_get_current_encrypted_key)
+    -  [Returns](#@Returns_6)
+-  [Function `rotate_encryption_key`](#(messaging=0x0)_messaging_rotate_encryption_key)
+    -  [Parameters](#@Parameters_7)
     -  [Aborts](#@Aborts_8)
+-  [Function `current_encryption_key_version`](#(messaging=0x0)_messaging_current_encryption_key_version)
+    -  [Returns](#@Returns_9)
+-  [Function `get_encrypted_key`](#(messaging=0x0)_messaging_get_encrypted_key)
+    -  [Parameters](#@Parameters_10)
+    -  [Returns](#@Returns_11)
+    -  [Aborts](#@Aborts_12)
+-  [Function `get_current_encrypted_key`](#(messaging=0x0)_messaging_get_current_encrypted_key)
+    -  [Returns](#@Returns_13)
+    -  [Aborts](#@Aborts_14)
 -  [Function `has_encryption`](#(messaging=0x0)_messaging_has_encryption)
+    -  [Returns](#@Returns_15)
 -  [Function `add_member`](#(messaging=0x0)_messaging_add_member)
-    -  [Aborts](#@Aborts_9)
+    -  [Parameters](#@Parameters_16)
+    -  [Aborts](#@Aborts_17)
 -  [Function `remove_member`](#(messaging=0x0)_messaging_remove_member)
-    -  [Aborts](#@Aborts_10)
+    -  [Parameters](#@Parameters_18)
+    -  [Aborts](#@Aborts_19)
 -  [Function `leave`](#(messaging=0x0)_messaging_leave)
-    -  [Aborts](#@Aborts_11)
+    -  [Parameters](#@Parameters_20)
+    -  [Aborts](#@Aborts_21)
 -  [Function `grant_permission`](#(messaging=0x0)_messaging_grant_permission)
-    -  [Type Parameters](#@Type_Parameters_12)
-    -  [Aborts](#@Aborts_13)
+    -  [Type Parameters](#@Type_Parameters_22)
+    -  [Parameters](#@Parameters_23)
+    -  [Aborts](#@Aborts_24)
 -  [Function `revoke_permission`](#(messaging=0x0)_messaging_revoke_permission)
-    -  [Type Parameters](#@Type_Parameters_14)
-    -  [Aborts](#@Aborts_15)
+    -  [Type Parameters](#@Type_Parameters_25)
+    -  [Parameters](#@Parameters_26)
+    -  [Aborts](#@Aborts_27)
 -  [Function `is_authorized`](#(messaging=0x0)_messaging_is_authorized)
+    -  [Type Parameters](#@Type_Parameters_28)
+    -  [Returns](#@Returns_29)
 -  [Function `has_permission`](#(messaging=0x0)_messaging_has_permission)
+    -  [Type Parameters](#@Type_Parameters_30)
+    -  [Parameters](#@Parameters_31)
+    -  [Returns](#@Returns_32)
 -  [Function `is_member`](#(messaging=0x0)_messaging_is_member)
+    -  [Parameters](#@Parameters_33)
+    -  [Returns](#@Returns_34)
 -  [Function `creator`](#(messaging=0x0)_messaging_creator)
+    -  [Returns](#@Returns_35)
 -  [Function `add_member_with_approval`](#(messaging=0x0)_messaging_add_member_with_approval)
-    -  [Type Parameters](#@Type_Parameters_16)
-    -  [Parameters](#@Parameters_17)
-    -  [Aborts](#@Aborts_18)
+    -  [Type Parameters](#@Type_Parameters_36)
+    -  [Parameters](#@Parameters_37)
+    -  [Aborts](#@Aborts_38)
 
 
 <pre><code><b>use</b> (groups=0x0)::join_policy;
@@ -112,7 +132,8 @@ Messaging-specific permissions (defined in this module):
 
 ## Struct `MessagingSender`
 
-Permission to send messages to the group
+Permission to send messages to the group.
+Separate from <code><a href="../messaging/messaging.md#(messaging=0x0)_messaging_MessagingReader">MessagingReader</a></code> to enable mute functionality.
 
 
 <pre><code><b>public</b> <b>struct</b> <a href="../messaging/messaging.md#(messaging=0x0)_messaging_MessagingSender">MessagingSender</a> <b>has</b> drop
@@ -134,7 +155,8 @@ Permission to send messages to the group
 
 ## Struct `MessagingReader`
 
-Permission to read/decrypt messages from the group
+Permission to read/decrypt messages from the group.
+Separate from <code><a href="../messaging/messaging.md#(messaging=0x0)_messaging_MessagingSender">MessagingSender</a></code> to enable read-only or write-only access.
 
 
 <pre><code><b>public</b> <b>struct</b> <a href="../messaging/messaging.md#(messaging=0x0)_messaging_MessagingReader">MessagingReader</a> <b>has</b> drop
@@ -156,7 +178,7 @@ Permission to read/decrypt messages from the group
 
 ## Struct `MessagingDeleter`
 
-Permission to delete messages in the group
+Permission to delete messages in the group.
 
 
 <pre><code><b>public</b> <b>struct</b> <a href="../messaging/messaging.md#(messaging=0x0)_messaging_MessagingDeleter">MessagingDeleter</a> <b>has</b> drop
@@ -178,7 +200,7 @@ Permission to delete messages in the group
 
 ## Struct `MessagingEditor`
 
-Permission to edit messages in the group
+Permission to edit messages in the group.
 
 
 <pre><code><b>public</b> <b>struct</b> <a href="../messaging/messaging.md#(messaging=0x0)_messaging_MessagingEditor">MessagingEditor</a> <b>has</b> drop
@@ -262,9 +284,24 @@ A messaging group that wraps a PermissionsGroup with messaging-specific permissi
 ## Function `new`
 
 Creates a new MessagingGroup with the caller as the creator.
+
 The creator is automatically granted all permissions:
-- From groups library: PermissionsManager, MemberAdder, MemberRemover
-- Messaging-specific: MessagingSender, MessagingReader, MessagingDeleter, MessagingEditor
+- From groups library: <code>PermissionsManager</code>, <code>MemberAdder</code>, <code>MemberRemover</code>
+- Messaging-specific: <code><a href="../messaging/messaging.md#(messaging=0x0)_messaging_MessagingSender">MessagingSender</a></code>, <code><a href="../messaging/messaging.md#(messaging=0x0)_messaging_MessagingReader">MessagingReader</a></code>, <code><a href="../messaging/messaging.md#(messaging=0x0)_messaging_MessagingDeleter">MessagingDeleter</a></code>, <code><a href="../messaging/messaging.md#(messaging=0x0)_messaging_MessagingEditor">MessagingEditor</a></code>
+
+
+<a name="@Parameters_3"></a>
+
+### Parameters
+
+- <code>ctx</code>: Transaction context
+
+
+<a name="@Returns_4"></a>
+
+### Returns
+
+A new <code><a href="../messaging/messaging.md#(messaging=0x0)_messaging_MessagingGroup">MessagingGroup</a></code> with the caller as creator and all permissions granted.
 
 
 <pre><code><b>public</b> <b>fun</b> <a href="../messaging/messaging.md#(messaging=0x0)_messaging_new">new</a>(ctx: &<b>mut</b> <a href="../dependencies/sui/tx_context.md#sui_tx_context_TxContext">sui::tx_context::TxContext</a>): (<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::messaging::MessagingGroup
@@ -301,10 +338,11 @@ The creator is automatically granted all permissions:
 ## Function `new_with_encryption`
 
 Creates a new MessagingGroup with encryption enabled.
-The creator is automatically granted all permissions including EncryptionKeyRotator.
+
+The creator is automatically granted all permissions including <code>EncryptionKeyRotator</code>.
 
 
-<a name="@Parameters_3"></a>
+<a name="@Parameters_5"></a>
 
 ### Parameters
 
@@ -312,11 +350,11 @@ The creator is automatically granted all permissions including EncryptionKeyRota
 - <code>ctx</code>: Transaction context
 
 
-<a name="@Returns_4"></a>
+<a name="@Returns_6"></a>
 
 ### Returns
 
-- A new <code><a href="../messaging/messaging.md#(messaging=0x0)_messaging_MessagingGroup">MessagingGroup</a></code> with encryption history attached
+A new <code><a href="../messaging/messaging.md#(messaging=0x0)_messaging_MessagingGroup">MessagingGroup</a></code> with encryption history attached.
 
 
 <pre><code><b>public</b> <b>fun</b> <a href="../messaging/messaging.md#(messaging=0x0)_messaging_new_with_encryption">new_with_encryption</a>(initial_encrypted_dek: vector&lt;u8&gt;, ctx: &<b>mut</b> <a href="../dependencies/sui/tx_context.md#sui_tx_context_TxContext">sui::tx_context::TxContext</a>): (<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::messaging::MessagingGroup
@@ -362,10 +400,9 @@ The creator is automatically granted all permissions including EncryptionKeyRota
 ## Function `rotate_encryption_key`
 
 Rotates the encryption key for this MessagingGroup.
-Requires the caller to have EncryptionKeyRotator permission.
 
 
-<a name="@Parameters_5"></a>
+<a name="@Parameters_7"></a>
 
 ### Parameters
 
@@ -374,12 +411,12 @@ Requires the caller to have EncryptionKeyRotator permission.
 - <code>ctx</code>: Transaction context
 
 
-<a name="@Aborts_6"></a>
+<a name="@Aborts_8"></a>
 
 ### Aborts
 
-- If caller doesn't have EncryptionKeyRotator permission
-- If encryption is not enabled for this group
+- If caller doesn't have <code>EncryptionKeyRotator</code> permission.
+- If encryption is not enabled for this group.
 
 
 <pre><code><b>public</b> <b>fun</b> <a href="../messaging/messaging.md#(messaging=0x0)_messaging_rotate_encryption_key">rotate_encryption_key</a>(self: &<b>mut</b> (<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::messaging::MessagingGroup, new_encrypted_dek: vector&lt;u8&gt;, ctx: &<a href="../dependencies/sui/tx_context.md#sui_tx_context_TxContext">sui::tx_context::TxContext</a>)
@@ -414,8 +451,14 @@ Requires the caller to have EncryptionKeyRotator permission.
 
 ## Function `current_encryption_key_version`
 
-Returns the current encryption key version.
-Returns 0 if encryption is not enabled.
+Returns the current encryption key version (0-indexed).
+
+
+<a name="@Returns_9"></a>
+
+### Returns
+
+The current key version, or 0 if encryption is not enabled.
 
 
 <pre><code><b>public</b> <b>fun</b> <a href="../messaging/messaging.md#(messaging=0x0)_messaging_current_encryption_key_version">current_encryption_key_version</a>(self: &(<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::messaging::MessagingGroup): u64
@@ -447,12 +490,27 @@ Returns 0 if encryption is not enabled.
 Returns the encrypted DEK for a specific version.
 
 
-<a name="@Aborts_7"></a>
+<a name="@Parameters_10"></a>
+
+### Parameters
+
+- <code>self</code>: Reference to the MessagingGroup
+- <code>version</code>: The key version to retrieve (0-indexed)
+
+
+<a name="@Returns_11"></a>
+
+### Returns
+
+The encrypted DEK bytes for the specified version.
+
+
+<a name="@Aborts_12"></a>
 
 ### Aborts
 
-- If encryption is not enabled
-- If the key version doesn't exist
+- If encryption is not enabled.
+- If the key version doesn't exist.
 
 
 <pre><code><b>public</b> <b>fun</b> <a href="../messaging/messaging.md#(messaging=0x0)_messaging_get_encrypted_key">get_encrypted_key</a>(self: &(<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::messaging::MessagingGroup, version: u64): vector&lt;u8&gt;
@@ -482,11 +540,18 @@ Returns the encrypted DEK for a specific version.
 Returns the encrypted DEK for the current (latest) version.
 
 
-<a name="@Aborts_8"></a>
+<a name="@Returns_13"></a>
+
+### Returns
+
+The encrypted DEK bytes for the current version.
+
+
+<a name="@Aborts_14"></a>
 
 ### Aborts
 
-- If encryption is not enabled
+- If encryption is not enabled.
 
 
 <pre><code><b>public</b> <b>fun</b> <a href="../messaging/messaging.md#(messaging=0x0)_messaging_get_current_encrypted_key">get_current_encrypted_key</a>(self: &(<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::messaging::MessagingGroup): vector&lt;u8&gt;
@@ -516,6 +581,13 @@ Returns the encrypted DEK for the current (latest) version.
 Checks if encryption is enabled for this MessagingGroup.
 
 
+<a name="@Returns_15"></a>
+
+### Returns
+
+<code><b>true</b></code> if encryption is enabled, <code><b>false</b></code> otherwise.
+
+
 <pre><code><b>public</b> <b>fun</b> <a href="../messaging/messaging.md#(messaging=0x0)_messaging_has_encryption">has_encryption</a>(self: &(<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::messaging::MessagingGroup): bool
 </code></pre>
 
@@ -539,16 +611,25 @@ Checks if encryption is enabled for this MessagingGroup.
 ## Function `add_member`
 
 Adds a new member with no initial permissions.
-Requires the caller to have MemberAdder permission.
+
 Use <code><a href="../messaging/messaging.md#(messaging=0x0)_messaging_grant_permission">grant_permission</a></code> afterward to assign permissions to the new member.
 
 
-<a name="@Aborts_9"></a>
+<a name="@Parameters_16"></a>
+
+### Parameters
+
+- <code>self</code>: Mutable reference to the MessagingGroup
+- <code>new_member</code>: Address of the new member to add
+- <code>ctx</code>: Transaction context
+
+
+<a name="@Aborts_17"></a>
 
 ### Aborts
 
-- If caller does not have MemberAdder permission
-- If new_member is already a member
+- If caller does not have <code>MemberAdder</code> permission.
+- If <code>new_member</code> is already a member.
 
 
 <pre><code><b>public</b> <b>fun</b> <a href="../messaging/messaging.md#(messaging=0x0)_messaging_add_member">add_member</a>(self: &<b>mut</b> (<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::messaging::MessagingGroup, new_member: <b>address</b>, ctx: &<a href="../dependencies/sui/tx_context.md#sui_tx_context_TxContext">sui::tx_context::TxContext</a>)
@@ -574,16 +655,24 @@ Use <code><a href="../messaging/messaging.md#(messaging=0x0)_messaging_grant_per
 ## Function `remove_member`
 
 Removes a member from the MessagingGroup.
-Requires the caller to have MemberRemover permission.
 
 
-<a name="@Aborts_10"></a>
+<a name="@Parameters_18"></a>
+
+### Parameters
+
+- <code>self</code>: Mutable reference to the MessagingGroup
+- <code>member</code>: Address of the member to remove
+- <code>ctx</code>: Transaction context
+
+
+<a name="@Aborts_19"></a>
 
 ### Aborts
 
-- If caller does not have MemberRemover permission
-- If member does not exist
-- If removing the member would leave no PermissionsManager remaining
+- If caller does not have <code>MemberRemover</code> permission.
+- If member does not exist.
+- If removing the member would leave no <code>PermissionsManager</code> remaining.
 
 
 <pre><code><b>public</b> <b>fun</b> <a href="../messaging/messaging.md#(messaging=0x0)_messaging_remove_member">remove_member</a>(self: &<b>mut</b> (<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::messaging::MessagingGroup, member: <b>address</b>, ctx: &<a href="../dependencies/sui/tx_context.md#sui_tx_context_TxContext">sui::tx_context::TxContext</a>)
@@ -611,12 +700,20 @@ Requires the caller to have MemberRemover permission.
 Allows the calling member to leave the MessagingGroup.
 
 
-<a name="@Aborts_11"></a>
+<a name="@Parameters_20"></a>
+
+### Parameters
+
+- <code>self</code>: Mutable reference to the MessagingGroup
+- <code>ctx</code>: Transaction context
+
+
+<a name="@Aborts_21"></a>
 
 ### Aborts
 
-- If the caller is not a member
-- If leaving would leave no PermissionsManager remaining
+- If the caller is not a member.
+- If leaving would leave no <code>PermissionsManager</code> remaining.
 
 
 <pre><code><b>public</b> <b>fun</b> <a href="../messaging/messaging.md#(messaging=0x0)_messaging_leave">leave</a>(self: &<b>mut</b> (<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::messaging::MessagingGroup, ctx: &<a href="../dependencies/sui/tx_context.md#sui_tx_context_TxContext">sui::tx_context::TxContext</a>)
@@ -642,22 +739,30 @@ Allows the calling member to leave the MessagingGroup.
 ## Function `grant_permission`
 
 Grants a permission to an existing member.
-Requires the caller to have PermissionsManager permission.
 
 
-<a name="@Type_Parameters_12"></a>
+<a name="@Type_Parameters_22"></a>
 
 ### Type Parameters
 
 - <code>Permission</code>: The permission type to grant
 
 
-<a name="@Aborts_13"></a>
+<a name="@Parameters_23"></a>
+
+### Parameters
+
+- <code>self</code>: Mutable reference to the MessagingGroup
+- <code>member</code>: Address of the member to grant permission to
+- <code>ctx</code>: Transaction context
+
+
+<a name="@Aborts_24"></a>
 
 ### Aborts
 
-- If caller does not have PermissionsManager permission
-- If member does not exist
+- If caller does not have <code>PermissionsManager</code> permission.
+- If member does not exist.
 
 
 <pre><code><b>public</b> <b>fun</b> <a href="../messaging/messaging.md#(messaging=0x0)_messaging_grant_permission">grant_permission</a>&lt;Permission: drop&gt;(self: &<b>mut</b> (<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::messaging::MessagingGroup, member: <b>address</b>, ctx: &<a href="../dependencies/sui/tx_context.md#sui_tx_context_TxContext">sui::tx_context::TxContext</a>)
@@ -687,23 +792,31 @@ Requires the caller to have PermissionsManager permission.
 ## Function `revoke_permission`
 
 Revokes a permission from a member.
-Requires the caller to have PermissionsManager permission.
 
 
-<a name="@Type_Parameters_14"></a>
+<a name="@Type_Parameters_25"></a>
 
 ### Type Parameters
 
 - <code>Permission</code>: The permission type to revoke
 
 
-<a name="@Aborts_15"></a>
+<a name="@Parameters_26"></a>
+
+### Parameters
+
+- <code>self</code>: Mutable reference to the MessagingGroup
+- <code>member</code>: Address of the member to revoke permission from
+- <code>ctx</code>: Transaction context
+
+
+<a name="@Aborts_27"></a>
 
 ### Aborts
 
-- If caller does not have PermissionsManager permission
-- If member does not exist
-- If revoking PermissionsManager would leave none remaining
+- If caller does not have <code>PermissionsManager</code> permission.
+- If member does not exist.
+- If revoking <code>PermissionsManager</code> would leave none remaining.
 
 
 <pre><code><b>public</b> <b>fun</b> <a href="../messaging/messaging.md#(messaging=0x0)_messaging_revoke_permission">revoke_permission</a>&lt;Permission: drop&gt;(self: &<b>mut</b> (<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::messaging::MessagingGroup, member: <b>address</b>, ctx: &<a href="../dependencies/sui/tx_context.md#sui_tx_context_TxContext">sui::tx_context::TxContext</a>)
@@ -735,6 +848,20 @@ Requires the caller to have PermissionsManager permission.
 Checks if the caller has the specified permission.
 
 
+<a name="@Type_Parameters_28"></a>
+
+### Type Parameters
+
+- <code>Permission</code>: The permission type to check for
+
+
+<a name="@Returns_29"></a>
+
+### Returns
+
+<code><b>true</b></code> if the caller has the permission, <code><b>false</b></code> otherwise.
+
+
 <pre><code><b>public</b> <b>fun</b> <a href="../messaging/messaging.md#(messaging=0x0)_messaging_is_authorized">is_authorized</a>&lt;Permission: drop&gt;(self: &(<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::messaging::MessagingGroup, ctx: &<a href="../dependencies/sui/tx_context.md#sui_tx_context_TxContext">sui::tx_context::TxContext</a>): bool
 </code></pre>
 
@@ -758,6 +885,28 @@ Checks if the caller has the specified permission.
 ## Function `has_permission`
 
 Checks if an address has the specified permission.
+
+
+<a name="@Type_Parameters_30"></a>
+
+### Type Parameters
+
+- <code>Permission</code>: The permission type to check for
+
+
+<a name="@Parameters_31"></a>
+
+### Parameters
+
+- <code>self</code>: Reference to the MessagingGroup
+- <code>member</code>: Address to check for the permission
+
+
+<a name="@Returns_32"></a>
+
+### Returns
+
+<code><b>true</b></code> if the address has the permission, <code><b>false</b></code> otherwise.
 
 
 <pre><code><b>public</b> <b>fun</b> <a href="../messaging/messaging.md#(messaging=0x0)_messaging_has_permission">has_permission</a>&lt;Permission: drop&gt;(self: &(<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::messaging::MessagingGroup, member: <b>address</b>): bool
@@ -785,6 +934,21 @@ Checks if an address has the specified permission.
 Checks if the given address is a member of the MessagingGroup.
 
 
+<a name="@Parameters_33"></a>
+
+### Parameters
+
+- <code>self</code>: Reference to the MessagingGroup
+- <code>member</code>: Address to check for membership
+
+
+<a name="@Returns_34"></a>
+
+### Returns
+
+<code><b>true</b></code> if the address is a member, <code><b>false</b></code> otherwise.
+
+
 <pre><code><b>public</b> <b>fun</b> <a href="../messaging/messaging.md#(messaging=0x0)_messaging_is_member">is_member</a>(self: &(<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::messaging::MessagingGroup, member: <b>address</b>): bool
 </code></pre>
 
@@ -808,7 +972,15 @@ Checks if the given address is a member of the MessagingGroup.
 ## Function `creator`
 
 Returns the creator address of this MessagingGroup.
-Can be used as namespace for Seal encryption identity bytes.
+
+Can be used as the namespace prefix for Seal encryption identity bytes.
+
+
+<a name="@Returns_35"></a>
+
+### Returns
+
+The address of the group creator.
 
 
 <pre><code><b>public</b> <b>fun</b> <a href="../messaging/messaging.md#(messaging=0x0)_messaging_creator">creator</a>(self: &(<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::messaging::MessagingGroup): <b>address</b>
@@ -838,14 +1010,14 @@ This is the safe way to add members via JoinPolicy - the approval proves
 that all policy rules were satisfied.
 
 
-<a name="@Type_Parameters_16"></a>
+<a name="@Type_Parameters_36"></a>
 
 ### Type Parameters
 
 - <code>T</code>: The policy's witness type
 
 
-<a name="@Parameters_17"></a>
+<a name="@Parameters_37"></a>
 
 ### Parameters
 
@@ -853,7 +1025,7 @@ that all policy rules were satisfied.
 - <code>approval</code>: The JoinApproval proving the policy was satisfied (consumed).
 
 
-<a name="@Aborts_18"></a>
+<a name="@Aborts_38"></a>
 
 ### Aborts
 

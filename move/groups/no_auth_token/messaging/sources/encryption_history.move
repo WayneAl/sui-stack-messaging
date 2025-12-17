@@ -52,7 +52,7 @@ public struct EncryptionHistory has store {
 /// - `ctx`: Transaction context
 ///
 /// # Returns
-/// - A new `EncryptionHistory` with version 0
+/// A new `EncryptionHistory` with version 0.
 public(package) fun new(
     initial_encrypted_dek: vector<u8>,
     ctx: &mut TxContext,
@@ -79,26 +79,43 @@ public(package) fun rotate_key(
 }
 
 /// Returns the current key version (0-indexed).
+///
+/// # Returns
+/// The current (latest) key version.
 public fun current_key_version(self: &EncryptionHistory): u64 {
     self.encrypted_keys.length() - 1
 }
 
 /// Returns the encrypted DEK for a specific version.
 ///
+/// # Parameters
+/// - `self`: Reference to the EncryptionHistory
+/// - `version`: The key version to retrieve (0-indexed)
+///
+/// # Returns
+/// The encrypted DEK bytes for the specified version.
+///
 /// # Aborts
-/// - If the key version doesn't exist
+/// - If the key version doesn't exist.
 public fun get_encrypted_key(self: &EncryptionHistory, version: u64): vector<u8> {
     assert!(version < self.encrypted_keys.length(), EKeyVersionNotFound);
     *self.encrypted_keys.borrow(version)
 }
 
 /// Returns the encrypted DEK for the current (latest) version.
+///
+/// # Returns
+/// The encrypted DEK bytes for the current version.
 public fun get_current_encrypted_key(self: &EncryptionHistory): vector<u8> {
     self.get_encrypted_key(self.current_key_version())
 }
 
 /// Returns the dynamic field key for EncryptionHistory.
+///
 /// Used by the messaging module to access the encryption history.
+///
+/// # Returns
+/// The `EncryptionHistoryKey` for dynamic field access.
 public fun key(): EncryptionHistoryKey {
     EncryptionHistoryKey {}
 }

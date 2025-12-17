@@ -5,28 +5,14 @@
 
 Module: permissions_group
 
-TODO1: It might make more sense to just have PermissionsGranter and PermissionsRevoker
-We DO want to have separate permissions for adding/removing because removing a member is
-a more privileged/dangerous operation than adding a member.
-So, I propose to either have PermissionsManager + separate MemberAdder/MemberRemover
-Or just PermissionsGranter + PermissionsRevoker
-For now, we will keep PermissionsManager + MemberAdder/MemberRemover
+Provides a flexible permission system for group management with three distinct
+permission types:
+- <code><a href="../groups/permissions_group.md#groups_permissions_group_PermissionsManager">PermissionsManager</a></code>: Can grant and revoke permissions for any member
+- <code><a href="../groups/permissions_group.md#groups_permissions_group_MemberAdder">MemberAdder</a></code>: Can add new members to the group
+- <code><a href="../groups/permissions_group.md#groups_permissions_group_MemberRemover">MemberRemover</a></code>: Can remove existing members from the group
 
-TODO2: we currently check and ensure there is always at least one PermissionsManager,
-Should we also check for at least one MemberAdder and one MemberRemover?
-I guess this is where it starts getting ugly having 3 separate permissions instead of just
-granter/revoker. (of course a single PermissionsManager would be even simpler, but as mentioned
-above
-less flexible. And since we plan on offering this as a library, flexibility is important.)
-One other option is to not expose add_member/remove_member functions at all, and leave the
-implementation
-and gating of those functions to the user of the library.
-
-TODO3: Should we keep the assertions in the functions, or leave the responsibility to the
-developer using
-this library? I believe it would be ok, if we manage to implement the typed_witness
-Auth<Permission> token
-pattern. But, until then, I believe we should handle the assertions in this library.
+The system ensures there is always at least one <code><a href="../groups/permissions_group.md#groups_permissions_group_PermissionsManager">PermissionsManager</a></code> to prevent
+the group from becoming unmanageable.
 
 
 -  [Struct `PermissionsManager`](#groups_permissions_group_PermissionsManager)
@@ -42,28 +28,29 @@ pattern. But, until then, I believe we should handle the assertions in this libr
     -  [Aborts](#@Aborts_4)
 -  [Function `remove_member`](#groups_permissions_group_remove_member)
     -  [Parameters](#@Parameters_5)
+    -  [Aborts](#@Aborts_6)
 -  [Function `leave`](#groups_permissions_group_leave)
-    -  [Parameters](#@Parameters_6)
-    -  [Aborts](#@Aborts_7)
+    -  [Parameters](#@Parameters_7)
+    -  [Aborts](#@Aborts_8)
 -  [Function `grant_permission`](#groups_permissions_group_grant_permission)
-    -  [Type Parameters](#@Type_Parameters_8)
-    -  [Parameters](#@Parameters_9)
-    -  [Aborts](#@Aborts_10)
+    -  [Type Parameters](#@Type_Parameters_9)
+    -  [Parameters](#@Parameters_10)
+    -  [Aborts](#@Aborts_11)
 -  [Function `revoke_permission`](#groups_permissions_group_revoke_permission)
-    -  [Type Parameters](#@Type_Parameters_11)
-    -  [Parameters](#@Parameters_12)
-    -  [Aborts](#@Aborts_13)
+    -  [Type Parameters](#@Type_Parameters_12)
+    -  [Parameters](#@Parameters_13)
+    -  [Aborts](#@Aborts_14)
 -  [Function `has_permission`](#groups_permissions_group_has_permission)
-    -  [Type Parameters](#@Type_Parameters_14)
-    -  [Parameters](#@Parameters_15)
-    -  [Returns](#@Returns_16)
+    -  [Type Parameters](#@Type_Parameters_15)
+    -  [Parameters](#@Parameters_16)
+    -  [Returns](#@Returns_17)
 -  [Function `is_member`](#groups_permissions_group_is_member)
-    -  [Parameters](#@Parameters_17)
-    -  [Returns](#@Returns_18)
+    -  [Parameters](#@Parameters_18)
+    -  [Returns](#@Returns_19)
 -  [Function `add_member_with_approval`](#groups_permissions_group_add_member_with_approval)
-    -  [Type Parameters](#@Type_Parameters_19)
-    -  [Parameters](#@Parameters_20)
-    -  [Aborts](#@Aborts_21)
+    -  [Type Parameters](#@Type_Parameters_20)
+    -  [Parameters](#@Parameters_21)
+    -  [Aborts](#@Aborts_22)
 
 
 <pre><code><b>use</b> <a href="../groups/join_policy.md#groups_join_policy">groups::join_policy</a>;
@@ -164,6 +151,9 @@ Witness type representing the permission to remove members.
 Authorization state mapping addresses to their granted permissions
 represented as TypeNames.
 
+Open question: Should this be generic <code>&lt;<b>phantom</b> T&gt;</code> to allow multiple
+independent permission systems?
+
 
 <pre><code><b>public</b> <b>struct</b> <a href="../groups/permissions_group.md#groups_permissions_group_PermissionsGroup">PermissionsGroup</a> <b>has</b> store
 </code></pre>
@@ -228,6 +218,9 @@ represented as TypeNames.
 
 Creates a new PermissionsGroup with the transaction sender as the initial
 manager, adder, and remover.
+
+Open question: Should this be generic <code>&lt;T&gt;</code> to scope permissions to a
+specific context?
 
 
 <a name="@Parameters_1"></a>
@@ -336,6 +329,16 @@ Removes a member from the PermissionsGroup.
 - <code>ctx</code>: Transaction context for permission checks.
 
 
+<a name="@Aborts_6"></a>
+
+### Aborts
+
+- If caller does not have <code><a href="../groups/permissions_group.md#groups_permissions_group_MemberRemover">MemberRemover</a></code> permission.
+- If member does not exist in the PermissionsGroup.
+- If member has <code><a href="../groups/permissions_group.md#groups_permissions_group_PermissionsManager">PermissionsManager</a></code> permission and removing would leave no
+<code><a href="../groups/permissions_group.md#groups_permissions_group_PermissionsManager">PermissionsManager</a></code> remaining.
+
+
 <pre><code><b>public</b> <b>fun</b> <a href="../groups/permissions_group.md#groups_permissions_group_remove_member">remove_member</a>(self: &<b>mut</b> <a href="../groups/permissions_group.md#groups_permissions_group_PermissionsGroup">groups::permissions_group::PermissionsGroup</a>, member: <b>address</b>, ctx: &<a href="../dependencies/sui/tx_context.md#sui_tx_context_TxContext">sui::tx_context::TxContext</a>)
 </code></pre>
 
@@ -369,22 +372,18 @@ Removes a member from the PermissionsGroup.
 
 ## Function `leave`
 
-I would argue yes. Not sure if we want to issue some sort
-of LeftTicket?
-Let's see if we go with a MemberCap approach later on,
-in which case we would want the user that leaves, to be able
-to burn their MemberCap for the rebate.
 Allows the calling member to leave the PermissionsGroup.
 
 
-<a name="@Parameters_6"></a>
+<a name="@Parameters_7"></a>
 
 ### Parameters
 
 - <code>self</code>: Mutable reference to the <code><a href="../groups/permissions_group.md#groups_permissions_group_PermissionsGroup">PermissionsGroup</a></code> state.
 - <code>ctx</code>: Transaction context for permission checks.
 
-<a name="@Aborts_7"></a>
+
+<a name="@Aborts_8"></a>
 
 ### Aborts
 
@@ -428,13 +427,14 @@ Allows the calling member to leave the PermissionsGroup.
 Grants a new permission to an existing member.
 
 
-<a name="@Type_Parameters_8"></a>
+<a name="@Type_Parameters_9"></a>
 
 ### Type Parameters
 
 - <code>NewPermission</code>: The permission type to be granted to the member.
 
-<a name="@Parameters_9"></a>
+
+<a name="@Parameters_10"></a>
 
 ### Parameters
 
@@ -442,7 +442,8 @@ Grants a new permission to an existing member.
 - <code>member</code>: Address of the member to whom the permission will be granted.
 - <code>ctx</code>: Transaction context for permission checks.
 
-<a name="@Aborts_10"></a>
+
+<a name="@Aborts_11"></a>
 
 ### Aborts
 
@@ -490,13 +491,14 @@ Grants a new permission to an existing member.
 Revokes an existing permission from a member.
 
 
-<a name="@Type_Parameters_11"></a>
+<a name="@Type_Parameters_12"></a>
 
 ### Type Parameters
 
 - <code>ExistingPermission</code>: The permission type to be revoked from the member.
 
-<a name="@Parameters_12"></a>
+
+<a name="@Parameters_13"></a>
 
 ### Parameters
 
@@ -504,13 +506,14 @@ Revokes an existing permission from a member.
 - <code>member</code>: Address of the member from whom the permission will be revoked.
 - <code>ctx</code>: Transaction context for permission checks.
 
-<a name="@Aborts_13"></a>
+
+<a name="@Aborts_14"></a>
 
 ### Aborts
 
 - If the caller does not have <code><a href="../groups/permissions_group.md#groups_permissions_group_PermissionsManager">PermissionsManager</a></code> permission.
-- If the member does not exist in the permissions table.
-- If revoking the permission would leave no <code><a href="../groups/permissions_group.md#groups_permissions_group_PermissionsManager">PermissionsManager</a></code> remaining.
+- If the member does not exist in the PermissionsGroup.
+- If revoking <code><a href="../groups/permissions_group.md#groups_permissions_group_PermissionsManager">PermissionsManager</a></code> would leave no managers remaining.
 
 
 <pre><code><b>public</b> <b>fun</b> <a href="../groups/permissions_group.md#groups_permissions_group_revoke_permission">revoke_permission</a>&lt;ExistingPermission: drop&gt;(self: &<b>mut</b> <a href="../groups/permissions_group.md#groups_permissions_group_PermissionsGroup">groups::permissions_group::PermissionsGroup</a>, member: <b>address</b>, ctx: &<a href="../dependencies/sui/tx_context.md#sui_tx_context_TxContext">sui::tx_context::TxContext</a>)
@@ -557,24 +560,27 @@ Revokes an existing permission from a member.
 
 Checks if the given address has the specified permission.
 
-<a name="@Type_Parameters_14"></a>
+
+<a name="@Type_Parameters_15"></a>
 
 ### Type Parameters
 
 - <code>Permission</code>: The permission type to check for.
 
-<a name="@Parameters_15"></a>
+
+<a name="@Parameters_16"></a>
 
 ### Parameters
 
 - <code>self</code>: Reference to the <code><a href="../groups/permissions_group.md#groups_permissions_group_PermissionsGroup">PermissionsGroup</a></code> state.
 - <code>member</code>: Member address to check for the specified permission.
 
-<a name="@Returns_16"></a>
+
+<a name="@Returns_17"></a>
 
 ### Returns
 
-- <code>bool</code>: <code><b>true</b></code> if the address has the permission, <code><b>false</b></code> otherwise
+<code><b>true</b></code> if the address has the permission, <code><b>false</b></code> otherwise.
 
 
 <pre><code><b>public</b> <b>fun</b> <a href="../groups/permissions_group.md#groups_permissions_group_has_permission">has_permission</a>&lt;Permission: drop&gt;(self: &<a href="../groups/permissions_group.md#groups_permissions_group_PermissionsGroup">groups::permissions_group::PermissionsGroup</a>, member: <b>address</b>): bool
@@ -602,18 +608,19 @@ Checks if the given address has the specified permission.
 Checks if the given address is a member of the PermissionsGroup.
 
 
-<a name="@Parameters_17"></a>
+<a name="@Parameters_18"></a>
 
 ### Parameters
 
 - <code>self</code>: Reference to the <code><a href="../groups/permissions_group.md#groups_permissions_group_PermissionsGroup">PermissionsGroup</a></code> state.
 - <code>member</code>: Address to check for membership.
 
-<a name="@Returns_18"></a>
+
+<a name="@Returns_19"></a>
 
 ### Returns
 
-- <code>bool</code>: <code><b>true</b></code> if the address is a member, <code><b>false</b></code> otherwise
+<code><b>true</b></code> if the address is a member, <code><b>false</b></code> otherwise.
 
 
 <pre><code><b>public</b> <b>fun</b> <a href="../groups/permissions_group.md#groups_permissions_group_is_member">is_member</a>(self: &<a href="../groups/permissions_group.md#groups_permissions_group_PermissionsGroup">groups::permissions_group::PermissionsGroup</a>, member: <b>address</b>): bool
@@ -643,14 +650,14 @@ This is the safe way to add members via JoinPolicy - the approval proves
 that all policy rules were satisfied.
 
 
-<a name="@Type_Parameters_19"></a>
+<a name="@Type_Parameters_20"></a>
 
 ### Type Parameters
 
 - <code>T</code>: The policy's witness type
 
 
-<a name="@Parameters_20"></a>
+<a name="@Parameters_21"></a>
 
 ### Parameters
 
@@ -658,7 +665,7 @@ that all policy rules were satisfied.
 - <code>approval</code>: The JoinApproval proving the policy was satisfied (consumed).
 
 
-<a name="@Aborts_21"></a>
+<a name="@Aborts_22"></a>
 
 ### Aborts
 

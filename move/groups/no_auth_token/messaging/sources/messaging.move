@@ -1,62 +1,3 @@
-// On-chain methods:
-//
-// - add_member
-// - remove_member
-// - grant_permission
-// - revoke_permission
-// (- authenticate action (return Auth<ActionPermission> token in auth_token_in_messaging package))
-// - is_authorized
-// - is_member
-//
-// - seal_approve (permission to decrypt messages)
-// Does this need to be able to work with the `groups` smart-contract?
-// This is supposed to support any type of app-specific gating-logic.
-// So not sure if we want to bake this function in the messaging contract,
-// or even on the `groups` contract.
-// Maybe we could offer a default `seal_approve_member`, but leave any custom
-// gating logic to be implemented by the app developer in their own contract?
-// Would it perhaps make more sense to implement the `seal_approve_member` here
-// and leave the gating logic to the `app_contract::add_member`/`app_contract::leave_group` functions?
-//
-// what about seal's identity-bytes, aka keys namespace?
-// One case is to use the AuthState's UID (or perhaps MessagingGroup UID) + [nonce]
-// or we can keep track of the creator address, and use [creator_address][nonce]
-// the second approach makes it easier to work with envelope encryption
-//
-// There's still the problem of: do we want to implement a default `seal_approve`,
-// and what needs to be done to support a custom `seal_approve` in an app-specific contract
-// that makes use of the messaging contract?
-// How should we deal with the identity-bytes in that case?
-// Let's not forget we are also supposed to expose a ts-sdk, that should handle encryption/decryption
-// as well. Should we just ask for the identity-bytes to be provided by the app-developer when initializing
-// the messaging group ts-sdk?
-
-//
-// Would it make sense to think of the project as 2 OR 3 layers?
-// 1) groups generic smart-contract
-// 2) thin messaging contract on top of groups (expose the groups-permissions functionality + messaging-specific permissions?)
-// 3) app-specific contract on top of messaging/groups, meant to implement custom gating logic? Should this be an expecation?
-// what needs to be done on groups + messaging contracts, to allow for that?
-// There are 2 cases to consider getting "overriden" by a custom app-contract using the messaging contract:
-// - custom seal_approve functions
-// - custom add_member function (e.g. paid-membership, invite-only, time-limited memberships, time-limited gating, etc)
-// (so in this case seal just looks for membership, while custom-gating is handled by the custom add_member)
-
-// Off-chain methods:
-// - send_message (via message relayer service)
-// We still want to authenticate that the sender has permission to send messages to the group
-// BUT we don't want to execute a transaction for every message sent. That was the point
-// of having off-chain messaging in the first place.
-// Could we solve this by having the off-chain relayer do a dry-run/dev-inspect similar to seal's approach?
-// The off-chain relayer needs to also:
-// - retrieve & decrypt messages
-// verify permission to read (I guess seal_approve is ok since it only does a dry-run, and can generally get cached?)
-// - delete message(s)
-// verify permission to delete (can we do similar approach to seal, via a dry-run or dev-inspect?)
-// how would that verification look? Would we need a witness stuct `DeleteMessagePermission` to be part of groups AuthState?
-// - edit message(s)
-// verify permission to edit
-
 /// Module: messaging
 ///
 /// This module wraps the `permissions_group` library to provide messaging-specific
@@ -96,16 +37,18 @@ const EEncryptionNotEnabled: u64 = 1;
 
 // === Permission Witnesses ===
 
-// Separate permissions to read/send, in order to
-// facilitate a ban/mute functionality by 3rdparty apps
-// using the messaging as a dependency
-/// Permission to send messages to the group
+/// Permission to send messages to the group.
+/// Separate from `MessagingReader` to enable mute functionality.
 public struct MessagingSender() has drop;
-/// Permission to read/decrypt messages from the group
+
+/// Permission to read/decrypt messages from the group.
+/// Separate from `MessagingSender` to enable read-only or write-only access.
 public struct MessagingReader() has drop;
-/// Permission to delete messages in the group
+
+/// Permission to delete messages in the group.
 public struct MessagingDeleter() has drop;
-/// Permission to edit messages in the group
+
+/// Permission to edit messages in the group.
 public struct MessagingEditor() has drop;
 
 // === Structs ===
@@ -121,9 +64,16 @@ public struct MessagingGroup has key {
 // === Public Functions ===
 
 /// Creates a new MessagingGroup with the caller as the creator.
+///
 /// The creator is automatically granted all permissions:
-/// - From groups library: PermissionsManager, MemberAdder, MemberRemover
-/// - Messaging-specific: MessagingSender, MessagingReader, MessagingDeleter, MessagingEditor
+/// - From groups library: `PermissionsManager`, `MemberAdder`, `MemberRemover`
+/// - Messaging-specific: `MessagingSender`, `MessagingReader`, `MessagingDeleter`, `MessagingEditor`
+///
+/// # Parameters
+/// - `ctx`: Transaction context
+///
+/// # Returns
+/// A new `MessagingGroup` with the caller as creator and all permissions granted.
 public fun new(ctx: &mut TxContext): MessagingGroup {
     let mut permissions_group = permissions_group::new(ctx);
     let group_creator = ctx.sender();
@@ -142,14 +92,15 @@ public fun new(ctx: &mut TxContext): MessagingGroup {
 }
 
 /// Creates a new MessagingGroup with encryption enabled.
-/// The creator is automatically granted all permissions including EncryptionKeyRotator.
+///
+/// The creator is automatically granted all permissions including `EncryptionKeyRotator`.
 ///
 /// # Parameters
 /// - `initial_encrypted_dek`: The initial encrypted DEK bytes (full EncryptedObject from Seal)
 /// - `ctx`: Transaction context
 ///
 /// # Returns
-/// - A new `MessagingGroup` with encryption history attached
+/// A new `MessagingGroup` with encryption history attached.
 public fun new_with_encryption(
     initial_encrypted_dek: vector<u8>,
     ctx: &mut TxContext,
@@ -179,7 +130,6 @@ public fun new_with_encryption(
 }
 
 /// Rotates the encryption key for this MessagingGroup.
-/// Requires the caller to have EncryptionKeyRotator permission.
 ///
 /// # Parameters
 /// - `self`: Mutable reference to the MessagingGroup
@@ -187,8 +137,8 @@ public fun new_with_encryption(
 /// - `ctx`: Transaction context
 ///
 /// # Aborts
-/// - If caller doesn't have EncryptionKeyRotator permission
-/// - If encryption is not enabled for this group
+/// - If caller doesn't have `EncryptionKeyRotator` permission.
+/// - If encryption is not enabled for this group.
 public fun rotate_encryption_key(
     self: &mut MessagingGroup,
     new_encrypted_dek: vector<u8>,
@@ -204,8 +154,10 @@ public fun rotate_encryption_key(
     history.rotate_key(new_encrypted_dek);
 }
 
-/// Returns the current encryption key version.
-/// Returns 0 if encryption is not enabled.
+/// Returns the current encryption key version (0-indexed).
+///
+/// # Returns
+/// The current key version, or 0 if encryption is not enabled.
 public fun current_encryption_key_version(self: &MessagingGroup): u64 {
     if (!dynamic_field::exists_(&self.id, encryption_history::key())) {
         return 0
@@ -216,9 +168,16 @@ public fun current_encryption_key_version(self: &MessagingGroup): u64 {
 
 /// Returns the encrypted DEK for a specific version.
 ///
+/// # Parameters
+/// - `self`: Reference to the MessagingGroup
+/// - `version`: The key version to retrieve (0-indexed)
+///
+/// # Returns
+/// The encrypted DEK bytes for the specified version.
+///
 /// # Aborts
-/// - If encryption is not enabled
-/// - If the key version doesn't exist
+/// - If encryption is not enabled.
+/// - If the key version doesn't exist.
 public fun get_encrypted_key(self: &MessagingGroup, version: u64): vector<u8> {
     assert!(dynamic_field::exists_(&self.id, encryption_history::key()), EEncryptionNotEnabled);
     let history: &EncryptionHistory = dynamic_field::borrow(&self.id, encryption_history::key());
@@ -227,8 +186,11 @@ public fun get_encrypted_key(self: &MessagingGroup, version: u64): vector<u8> {
 
 /// Returns the encrypted DEK for the current (latest) version.
 ///
+/// # Returns
+/// The encrypted DEK bytes for the current version.
+///
 /// # Aborts
-/// - If encryption is not enabled
+/// - If encryption is not enabled.
 public fun get_current_encrypted_key(self: &MessagingGroup): vector<u8> {
     assert!(dynamic_field::exists_(&self.id, encryption_history::key()), EEncryptionNotEnabled);
     let history: &EncryptionHistory = dynamic_field::borrow(&self.id, encryption_history::key());
@@ -236,50 +198,70 @@ public fun get_current_encrypted_key(self: &MessagingGroup): vector<u8> {
 }
 
 /// Checks if encryption is enabled for this MessagingGroup.
+///
+/// # Returns
+/// `true` if encryption is enabled, `false` otherwise.
 public fun has_encryption(self: &MessagingGroup): bool {
     dynamic_field::exists_(&self.id, encryption_history::key())
 }
 
 /// Adds a new member with no initial permissions.
-/// Requires the caller to have MemberAdder permission.
+///
 /// Use `grant_permission` afterward to assign permissions to the new member.
 ///
+/// # Parameters
+/// - `self`: Mutable reference to the MessagingGroup
+/// - `new_member`: Address of the new member to add
+/// - `ctx`: Transaction context
+///
 /// # Aborts
-/// - If caller does not have MemberAdder permission
-/// - If new_member is already a member
+/// - If caller does not have `MemberAdder` permission.
+/// - If `new_member` is already a member.
 public fun add_member(self: &mut MessagingGroup, new_member: address, ctx: &TxContext) {
     self.permissions_group.add_member(new_member, ctx);
 }
 
 /// Removes a member from the MessagingGroup.
-/// Requires the caller to have MemberRemover permission.
+///
+/// # Parameters
+/// - `self`: Mutable reference to the MessagingGroup
+/// - `member`: Address of the member to remove
+/// - `ctx`: Transaction context
 ///
 /// # Aborts
-/// - If caller does not have MemberRemover permission
-/// - If member does not exist
-/// - If removing the member would leave no PermissionsManager remaining
+/// - If caller does not have `MemberRemover` permission.
+/// - If member does not exist.
+/// - If removing the member would leave no `PermissionsManager` remaining.
 public fun remove_member(self: &mut MessagingGroup, member: address, ctx: &TxContext) {
     self.permissions_group.remove_member(member, ctx);
 }
 
 /// Allows the calling member to leave the MessagingGroup.
 ///
+/// # Parameters
+/// - `self`: Mutable reference to the MessagingGroup
+/// - `ctx`: Transaction context
+///
 /// # Aborts
-/// - If the caller is not a member
-/// - If leaving would leave no PermissionsManager remaining
+/// - If the caller is not a member.
+/// - If leaving would leave no `PermissionsManager` remaining.
 public fun leave(self: &mut MessagingGroup, ctx: &TxContext) {
     self.permissions_group.leave(ctx);
 }
 
 /// Grants a permission to an existing member.
-/// Requires the caller to have PermissionsManager permission.
 ///
 /// # Type Parameters
 /// - `Permission`: The permission type to grant
 ///
+/// # Parameters
+/// - `self`: Mutable reference to the MessagingGroup
+/// - `member`: Address of the member to grant permission to
+/// - `ctx`: Transaction context
+///
 /// # Aborts
-/// - If caller does not have PermissionsManager permission
-/// - If member does not exist
+/// - If caller does not have `PermissionsManager` permission.
+/// - If member does not exist.
 public fun grant_permission<Permission: drop>(
     self: &mut MessagingGroup,
     member: address,
@@ -289,15 +271,19 @@ public fun grant_permission<Permission: drop>(
 }
 
 /// Revokes a permission from a member.
-/// Requires the caller to have PermissionsManager permission.
 ///
 /// # Type Parameters
 /// - `Permission`: The permission type to revoke
 ///
+/// # Parameters
+/// - `self`: Mutable reference to the MessagingGroup
+/// - `member`: Address of the member to revoke permission from
+/// - `ctx`: Transaction context
+///
 /// # Aborts
-/// - If caller does not have PermissionsManager permission
-/// - If member does not exist
-/// - If revoking PermissionsManager would leave none remaining
+/// - If caller does not have `PermissionsManager` permission.
+/// - If member does not exist.
+/// - If revoking `PermissionsManager` would leave none remaining.
 public fun revoke_permission<Permission: drop>(
     self: &mut MessagingGroup,
     member: address,
@@ -307,22 +293,49 @@ public fun revoke_permission<Permission: drop>(
 }
 
 /// Checks if the caller has the specified permission.
+///
+/// # Type Parameters
+/// - `Permission`: The permission type to check for
+///
+/// # Returns
+/// `true` if the caller has the permission, `false` otherwise.
 public fun is_authorized<Permission: drop>(self: &MessagingGroup, ctx: &TxContext): bool {
     self.permissions_group.has_permission<Permission>(ctx.sender())
 }
 
 /// Checks if an address has the specified permission.
+///
+/// # Type Parameters
+/// - `Permission`: The permission type to check for
+///
+/// # Parameters
+/// - `self`: Reference to the MessagingGroup
+/// - `member`: Address to check for the permission
+///
+/// # Returns
+/// `true` if the address has the permission, `false` otherwise.
 public fun has_permission<Permission: drop>(self: &MessagingGroup, member: address): bool {
     self.permissions_group.has_permission<Permission>(member)
 }
 
 /// Checks if the given address is a member of the MessagingGroup.
+///
+/// # Parameters
+/// - `self`: Reference to the MessagingGroup
+/// - `member`: Address to check for membership
+///
+/// # Returns
+/// `true` if the address is a member, `false` otherwise.
 public fun is_member(self: &MessagingGroup, member: address): bool {
     self.permissions_group.is_member(member)
 }
 
 /// Returns the creator address of this MessagingGroup.
-/// Can be used as namespace for Seal encryption identity bytes.
+///
+/// Can be used as the namespace prefix for Seal encryption identity bytes.
+///
+/// # Returns
+/// The address of the group creator.
 public fun creator(self: &MessagingGroup): address {
     self.creator
 }

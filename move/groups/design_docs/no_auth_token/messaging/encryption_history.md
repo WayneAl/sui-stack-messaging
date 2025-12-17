@@ -41,10 +41,15 @@ Use <code>messaging::rotate_encryption_key</code> to rotate keys.
 -  [Function `rotate_key`](#(messaging=0x0)_encryption_history_rotate_key)
     -  [Parameters](#@Parameters_5)
 -  [Function `current_key_version`](#(messaging=0x0)_encryption_history_current_key_version)
+    -  [Returns](#@Returns_6)
 -  [Function `get_encrypted_key`](#(messaging=0x0)_encryption_history_get_encrypted_key)
-    -  [Aborts](#@Aborts_6)
+    -  [Parameters](#@Parameters_7)
+    -  [Returns](#@Returns_8)
+    -  [Aborts](#@Aborts_9)
 -  [Function `get_current_encrypted_key`](#(messaging=0x0)_encryption_history_get_current_encrypted_key)
+    -  [Returns](#@Returns_10)
 -  [Function `key`](#(messaging=0x0)_encryption_history_key)
+    -  [Returns](#@Returns_11)
 
 
 <pre><code><b>use</b> <a href="../dependencies/std/ascii.md#std_ascii">std::ascii</a>;
@@ -172,7 +177,7 @@ Creates a new EncryptionHistory with an initial encrypted DEK.
 
 ### Returns
 
-- A new <code><a href="../messaging/encryption_history.md#(messaging=0x0)_encryption_history_EncryptionHistory">EncryptionHistory</a></code> with version 0
+A new <code><a href="../messaging/encryption_history.md#(messaging=0x0)_encryption_history_EncryptionHistory">EncryptionHistory</a></code> with version 0.
 
 
 <pre><code><b>public</b>(package) <b>fun</b> <a href="../messaging/encryption_history.md#(messaging=0x0)_encryption_history_new">new</a>(initial_encrypted_dek: vector&lt;u8&gt;, ctx: &<b>mut</b> <a href="../dependencies/sui/tx_context.md#sui_tx_context_TxContext">sui::tx_context::TxContext</a>): (<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::<a href="../messaging/encryption_history.md#(messaging=0x0)_encryption_history_EncryptionHistory">encryption_history::EncryptionHistory</a>
@@ -244,6 +249,13 @@ Appends the new encrypted DEK (version = length - 1 after push).
 Returns the current key version (0-indexed).
 
 
+<a name="@Returns_6"></a>
+
+### Returns
+
+The current (latest) key version.
+
+
 <pre><code><b>public</b> <b>fun</b> <a href="../messaging/encryption_history.md#(messaging=0x0)_encryption_history_current_key_version">current_key_version</a>(self: &(<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::<a href="../messaging/encryption_history.md#(messaging=0x0)_encryption_history_EncryptionHistory">encryption_history::EncryptionHistory</a>): u64
 </code></pre>
 
@@ -269,11 +281,26 @@ Returns the current key version (0-indexed).
 Returns the encrypted DEK for a specific version.
 
 
-<a name="@Aborts_6"></a>
+<a name="@Parameters_7"></a>
+
+### Parameters
+
+- <code>self</code>: Reference to the EncryptionHistory
+- <code>version</code>: The key version to retrieve (0-indexed)
+
+
+<a name="@Returns_8"></a>
+
+### Returns
+
+The encrypted DEK bytes for the specified version.
+
+
+<a name="@Aborts_9"></a>
 
 ### Aborts
 
-- If the key version doesn't exist
+- If the key version doesn't exist.
 
 
 <pre><code><b>public</b> <b>fun</b> <a href="../messaging/encryption_history.md#(messaging=0x0)_encryption_history_get_encrypted_key">get_encrypted_key</a>(self: &(<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::<a href="../messaging/encryption_history.md#(messaging=0x0)_encryption_history_EncryptionHistory">encryption_history::EncryptionHistory</a>, version: u64): vector&lt;u8&gt;
@@ -302,6 +329,13 @@ Returns the encrypted DEK for a specific version.
 Returns the encrypted DEK for the current (latest) version.
 
 
+<a name="@Returns_10"></a>
+
+### Returns
+
+The encrypted DEK bytes for the current version.
+
+
 <pre><code><b>public</b> <b>fun</b> <a href="../messaging/encryption_history.md#(messaging=0x0)_encryption_history_get_current_encrypted_key">get_current_encrypted_key</a>(self: &(<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::<a href="../messaging/encryption_history.md#(messaging=0x0)_encryption_history_EncryptionHistory">encryption_history::EncryptionHistory</a>): vector&lt;u8&gt;
 </code></pre>
 
@@ -325,7 +359,15 @@ Returns the encrypted DEK for the current (latest) version.
 ## Function `key`
 
 Returns the dynamic field key for EncryptionHistory.
+
 Used by the messaging module to access the encryption history.
+
+
+<a name="@Returns_11"></a>
+
+### Returns
+
+The <code><a href="../messaging/encryption_history.md#(messaging=0x0)_encryption_history_EncryptionHistoryKey">EncryptionHistoryKey</a></code> for dynamic field access.
 
 
 <pre><code><b>public</b> <b>fun</b> <a href="../messaging/encryption_history.md#(messaging=0x0)_encryption_history_key">key</a>(): (<a href="../messaging/messaging.md#(messaging=0x0)_messaging">messaging</a>=0x0)::<a href="../messaging/encryption_history.md#(messaging=0x0)_encryption_history_EncryptionHistoryKey">encryption_history::EncryptionHistoryKey</a>
