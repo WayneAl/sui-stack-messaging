@@ -7,7 +7,10 @@ Module: join_policy
 
 Implements customizable join policies using the hot potato pattern.
 This is modeled after Sui's TransferPolicy for maximum flexibility.
-
+> I do not like the duplicate authentication methods.
+> Check REQUIREMENTS.md for alternative approaches following a single approach.
+> Also I think this will become even more complex, because now I think it doesn't care for
+> Approvals from different packages trying to add a member to a different Group.
 
 <a name="@Overview_0"></a>
 
@@ -56,7 +59,7 @@ use groups::join_policy::{Self, JoinPolicy, JoinRequest};
 public struct PaymentRule has drop {}
 
 public struct PaymentConfig has store, drop {
-fee: u64,
+    fee: u64,
 }
 
 public fun satisfy<T>(
@@ -64,19 +67,19 @@ request: &mut JoinRequest<T>,
 policy: &JoinPolicy<T>,
 payment: Coin<SUI>,
 ) {
-let config: &PaymentConfig = join_policy::get_rule_config<T, PaymentRule,
-PaymentConfig>(policy);
-assert!(payment.value() >= config.fee, EInsufficientPayment);
-// ... handle payment ...
-join_policy::add_receipt<T, PaymentRule>(request, PaymentRule {});
+    let config: &PaymentConfig = join_policy::get_rule_config<T, PaymentRule,
+    PaymentConfig>(policy);
+    assert!(payment.value() >= config.fee, EInsufficientPayment);
+    // ... handle payment ...
+    join_policy::add_receipt<T, PaymentRule>(request, PaymentRule {});
 }
 ```
 
 
-    -  [Overview](#@Overview_0)
-    -  [Pattern](#@Pattern_1)
-    -  [Type Parameter](#@Type_Parameter_2)
-    -  [Example Custom Rule](#@Example_Custom_Rule_3)
+-  [Overview](#@Overview_0)
+-  [Pattern](#@Pattern_1)
+-  [Type Parameter](#@Type_Parameter_2)
+-  [Example Custom Rule](#@Example_Custom_Rule_3)
 -  [Struct `JoinRequest`](#groups_join_policy_JoinRequest)
 -  [Struct `JoinPolicy`](#groups_join_policy_JoinPolicy)
 -  [Struct `JoinPolicyCap`](#groups_join_policy_JoinPolicyCap)

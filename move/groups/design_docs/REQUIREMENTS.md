@@ -23,6 +23,9 @@ NOTE: We want to avoid doing frequent transactions, so, having to execute 1 tx e
 is prohibited. (This also makes the “Typed Witness” Auth<T, Perm> token pattern prohibitive for checking “SendMessagePermission”)
 Could we follow a strategy similar to seal? (Dry-run or dev-inspect the “is_authorized” function?)
 !! Only an issue for “SendMessagePermission”.
+> If sending messages is an off-chain action, I do not understand how SendMessagePermission is
+> different from ReadMessagePermission. Both should only be evaluated by Seal servers and not
+> require an extra on-chain transaction and gas usage.
 
 ### Messaging permissions:
 
@@ -37,6 +40,7 @@ Could we follow a strategy similar to seal? (Dry-run or dev-inspect the “is_au
 - ReadMessage (I guess this is tied to Seal)
 - EditMessage
 - DeleteMessage
+> If messages leave off-chain, why are not all the above 4 permissions tied to Seal only?
 
 - RotateEncryptionKey
 
@@ -65,10 +69,23 @@ For custom seal_approve (in 3rd-party package):
 ## Open Questions / Discussion Points
 
 - join_group: We would need to support a custom policy for joining? Could we defer that to a 3rdparty app-contract implementation ?could be also done as JoinRequest ticket, and similarly InvitationRequest. How can we support this. Maybe we can offer something similar to the TransferPolicy pattern?
+> The classic pattern for allowing a contract to call functions is the witness pattern. We can
+> simplify the logic by also storing Table<TypeName, Permission> for contracts that want to
+> authenticate contracts/types.
+> Another pattern maintaining a **single** logic pattern would be to use `MemberCap`s. A contract
+> can lock a `MemberCap` with JoinGroupPermission and use it in ptb.
 - What makes this customization even trickier, is the requirement to build a Typescript SDK as well. How could we make the Typescript SDK extensible?I believe the only option is to allow customization only through custom `seal_approve` contracts. In this case, the ts-sdk would simply ask for the custom seal_approve contract pkgID
-- Another potential approach to allow customization would be to have the MessagingGroup as `key+store`, so that a 3rdparty contract can just wrap it, and basically offer custom wrappers for all functions. Would require a lot of boilerplate, and would probably make the ts-sdk unusable for them though.
+> Don't know if this helps, but check what RWA standard does to enable automatic ptb-building:
+> https://github.com/manolisliolios/rwa-standard/blob/main/pvs/sources/rule.move#L42-L45
+- Another potential approach to allow customization would be to have the MessagingGroup as
+  `key+store`, so that a 3rdparty contract can just wrap it, and basically offer custom wrappers for
+  all functions. Would require a lot of boilerplate, and would probably make the ts-sdk unusable for
+  them though.
 - MemberCap vs address ? Tricky due to Groups being a generic library.
-- Individual user’s groups memberships tracking? Derived-objects would help for deduplication, but not for discovery. User would still need to know the MessagingGroup IDs they are a member of
+- Individual user’s groups memberships tracking? Derived-objects would help for deduplication, but
+  not for discovery. User would still need to know the MessagingGroup IDs they are a member of
+> What is the discovery issue we would hope to solve? User to groups? If member-caps also have the
+> group-id field inside them?
 
 ## Smart Contracts
 
