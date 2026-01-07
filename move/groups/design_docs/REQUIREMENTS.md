@@ -40,7 +40,7 @@ Could we follow a strategy similar to seal? (Dry-run or dev-inspect the “is_au
 - ReadMessage (I guess this is tied to Seal)
 - EditMessage
 - DeleteMessage
-> If messages leave off-chain, why are not all the above 4 permissions tied to Seal only?
+> If messages live off-chain, why are not all the above 4 permissions tied to Seal only?
 
 - RotateEncryptionKey
 
