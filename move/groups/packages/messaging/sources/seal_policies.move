@@ -25,7 +25,8 @@
 module messaging::seal_policies;
 
 use groups::permissions_group::{Self, PermissionsGroup};
-use messaging::messaging::{MessagingReader, MessagingApp};
+use messaging::encryption_history::EncryptionHistory;
+use messaging::messaging::{MessagingReader, Messaging};
 
 // === Error Codes ===
 
@@ -34,9 +35,9 @@ const ENotPermitted: u64 = 1;
 
 // === Helper Functions ===
 
-/// Validates that the id has the correct namespace prefix (creator address).
-///
-/// The creator address is used as the namespace to enable single-PTB group creation.
+/// Validates that the id has the correct seal-namespace prefix:
+/// EncryptionHistory's derived id (from MessagingNamespace + PermissionsGroup ID).
+/// id: [derived_id bytes][random nonce]
 ///
 /// # Parameters
 /// - `group`: Reference to the MessagingGroup
@@ -44,8 +45,8 @@ const ENotPermitted: u64 = 1;
 ///
 /// # Returns
 /// `true` if the namespace prefix matches, `false` otherwise.
-fun check_namespace(group: &MessagingGroup, id: &vector<u8>): bool {
-    let namespace = group.creator().to_bytes();
+fun check_namespace(encryption_history: &EncryptionHistory, id: &vector<u8>): bool {
+    let namespace = encryption_history.group_id().to_bytes();
     let namespace_len = namespace.length();
 
     if (namespace_len > id.length()) {
@@ -79,9 +80,9 @@ fun check_namespace(group: &MessagingGroup, id: &vector<u8>): bool {
 /// - If caller doesn't have `MessagingReader` permission.
 entry fun seal_approve_reader(
     id: vector<u8>,
-    group: &PermissionsGroup<MessagingApp>,
+    group: &PermissionsGroup<Messaging>,
     ctx: &TxContext,
 ) {
     assert!(check_namespace(group, &id), EInvalidNamespace);
-    assert!(group.has_permission<MessagingApp, MessagingReader>(ctx.sender()), ENotPermitted);
+    assert!(group.has_permission<Messaging, MessagingReader>(ctx.sender()), ENotPermitted);
 }

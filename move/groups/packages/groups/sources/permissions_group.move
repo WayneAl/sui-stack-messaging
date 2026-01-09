@@ -11,6 +11,7 @@
 module groups::permissions_group;
 
 use std::type_name::{Self, TypeName};
+use sui::derived_object;
 use sui::table::{Self, Table};
 use sui::vec_set::{Self, VecSet};
 
@@ -20,10 +21,12 @@ const ENotPermitted: u64 = 0;
 const EMemberNotFound: u64 = 1;
 // Error code for attempting to revoke the last PermissionsManager permission
 const ELastPermissionsManager: u64 = 2;
+const EPermissionsGroupAlreadyExists: u64 = 3;
 
 // === Witnesses ===
 
 /// Witness type representing the permission to grant or revoke permissions.
+/// TODO: split into PermissionsGranter and PermissionsRevoker
 public struct PermissionsManager() has drop;
 
 /// Witness type representing the permission to add members.
@@ -37,7 +40,7 @@ public struct MemberRemover() has drop;
 /// Authorization state mapping addresses to their granted permissions
 /// represented as TypeNames.
 ///
-public struct PermissionsGroup<phantom T> has key, store {
+public struct PermissionsGroup<phantom T: drop> has key, store {
     id: UID,
     /// address or object
     permissions: Table<address, VecSet<TypeName>>,
@@ -57,17 +60,37 @@ public struct PermissionsGroup<phantom T> has key, store {
 ///
 /// # Returns
 /// - A new `PermissionsGroup` object with the sender having all managing permissions.
-public fun new<T>(ctx: &mut TxContext): PermissionsGroup<T> {
-    let mut creator_permissions_set = vec_set::empty<TypeName>();
-    creator_permissions_set.insert(type_name::with_defining_ids<PermissionsManager>());
-    creator_permissions_set.insert(type_name::with_defining_ids<MemberAdder>());
-    creator_permissions_set.insert(type_name::with_defining_ids<MemberRemover>());
+public fun new<T: drop>(ctx: &mut TxContext): PermissionsGroup<T> {
+    let creator_permissions_set = init_creator_permissions_set();
 
     let mut permissions_table = table::new<address, VecSet<TypeName>>(ctx);
     permissions_table.add(ctx.sender(), creator_permissions_set);
 
     PermissionsGroup<T> {
         id: object::new(ctx),
+        permissions: permissions_table,
+        managers_count: 1,
+    }
+}
+
+/// Creates a new derived PermissionsGroup based on a derivation uid and key.
+public fun new_derived<T: drop, DerivationKey: copy + drop + store>(
+    derivation_uid: &mut UID,
+    derivation_key: DerivationKey,
+    ctx: &mut TxContext,
+): PermissionsGroup<T> {
+    assert!(
+        !derived_object::exists(derivation_uid, derivation_key),
+        EPermissionsGroupAlreadyExists,
+    );
+
+    let creator_permissions_set = init_creator_permissions_set();
+
+    let mut permissions_table = table::new<address, VecSet<TypeName>>(ctx);
+    permissions_table.add(ctx.sender(), creator_permissions_set);
+
+    PermissionsGroup<T> {
+        id: derived_object::claim(derivation_uid, derivation_key),
         permissions: permissions_table,
         managers_count: 1,
     }
@@ -85,7 +108,11 @@ public fun new<T>(ctx: &mut TxContext): PermissionsGroup<T> {
 /// # Aborts
 /// - If caller does not have MemberAdder permission.
 /// - If new_member is already a member.
-public fun add_member<T>(self: &mut PermissionsGroup<T>, new_member: address, ctx: &TxContext) {
+public fun add_member<T: drop>(
+    self: &mut PermissionsGroup<T>,
+    new_member: address,
+    ctx: &TxContext,
+) {
     // assert caller has MemberAdder permission
     assert!(self.has_permission<T, MemberAdder>(ctx.sender()), ENotPermitted);
     // assert new_member is not already present
@@ -103,7 +130,7 @@ public fun add_member<T>(self: &mut PermissionsGroup<T>, new_member: address, ct
 /// necessary checks itself (e.g. payment, etc).
 /// We are safe here, since UID is protected. Only the contrac/module defining the actor object
 /// has access to its UID.
-public fun object_add_member<T>(
+public fun object_add_member<T: drop>(
     self: &mut PermissionsGroup<T>,
     actor_object: &UID,
     ctx: &mut TxContext,
@@ -130,7 +157,11 @@ public fun object_add_member<T>(
 /// - If member does not exist in the PermissionsGroup.
 /// - If member has `PermissionsManager` permission and removing would leave no
 ///   `PermissionsManager` remaining.
-public fun remove_member<T>(self: &mut PermissionsGroup<T>, member: address, ctx: &TxContext) {
+public fun remove_member<T: drop>(
+    self: &mut PermissionsGroup<T>,
+    member: address,
+    ctx: &TxContext,
+) {
     // assert caller has MemberRemover permission
     assert!(self.has_permission<T, MemberRemover>(ctx.sender()), ENotPermitted);
     // assert member's permissions entry exists
@@ -146,7 +177,7 @@ public fun remove_member<T>(self: &mut PermissionsGroup<T>, member: address, ctx
     self.permissions.remove(member);
 }
 
-public fun object_remove_member<T>(
+public fun object_remove_member<T: drop>(
     self: &mut PermissionsGroup<T>,
     actor_object: &UID,
     ctx: &mut TxContext,
@@ -180,7 +211,7 @@ public fun object_remove_member<T>(
 /// # Aborts
 /// - If the caller does not have `PermissionsManager` permission.
 /// - If the member does not exist in the PermissionsGroup.
-public fun grant_permission<T, NewPermission: drop>(
+public fun grant_permission<T: drop, NewPermission: drop>(
     self: &mut PermissionsGroup<T>,
     member: address,
     ctx: &TxContext,
@@ -214,7 +245,7 @@ public fun grant_permission<T, NewPermission: drop>(
 /// - If the caller does not have `PermissionsManager` permission.
 /// - If the member does not exist in the PermissionsGroup.
 /// - If revoking `PermissionsManager` would leave no managers remaining.
-public fun revoke_permission<T, ExistingPermission: drop>(
+public fun revoke_permission<T: drop, ExistingPermission: drop>(
     self: &mut PermissionsGroup<T>,
     member: address,
     ctx: &TxContext,
@@ -253,7 +284,10 @@ public fun revoke_permission<T, ExistingPermission: drop>(
 ///
 /// # Returns
 /// `true` if the address has the permission, `false` otherwise.
-public fun has_permission<T, Permission: drop>(self: &PermissionsGroup<T>, member: address): bool {
+public fun has_permission<T: drop, Permission: drop>(
+    self: &PermissionsGroup<T>,
+    member: address,
+): bool {
     self.permissions.borrow(member).contains(&type_name::with_defining_ids<Permission>())
 }
 
@@ -265,6 +299,16 @@ public fun has_permission<T, Permission: drop>(self: &PermissionsGroup<T>, membe
 ///
 /// # Returns
 /// `true` if the address is a member, `false` otherwise.
-public fun is_member<T>(self: &PermissionsGroup<T>, member: address): bool {
+public fun is_member<T: drop>(self: &PermissionsGroup<T>, member: address): bool {
     self.permissions.contains(member)
+}
+
+// === Internal Functions ===
+
+fun init_creator_permissions_set(): VecSet<TypeName> {
+    let mut creator_permissions_set = vec_set::empty<TypeName>();
+    creator_permissions_set.insert(type_name::with_defining_ids<PermissionsManager>());
+    creator_permissions_set.insert(type_name::with_defining_ids<MemberAdder>());
+    creator_permissions_set.insert(type_name::with_defining_ids<MemberRemover>());
+    creator_permissions_set
 }

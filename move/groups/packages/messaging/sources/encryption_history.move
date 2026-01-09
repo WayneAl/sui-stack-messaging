@@ -17,26 +17,41 @@
 ///
 module messaging::encryption_history;
 
+use groups::permissions_group::{Self, PermissionsGroup, new_derived};
+use messaging::messaging::{Messaging, MessagingNamespace};
+use sui::derived_object;
 use sui::table_vec::{Self, TableVec};
 
 // === Error Codes ===
 
-const EKeyVersionNotFound: u64 = 0;
+const EEncryptionHistoryAlreadyExists: u64 = 0;
+const EKeyVersionNotFound: u64 = 1;
+const ENotPermitted: u64 = 2;
+
+// === Derivation Keys ===
+
+/// derived from MessagingNamespace + EncryptionHistoryTag(u64)
+public struct EncryptionHistoryTag(u64) has copy, drop, store;
+
+/// derived from MessagingNamespace PermissionsGroupTag(u64)
+public struct PermissionsGroupTag(u64) has copy, drop, store;
 
 // === Permission Witnesses ===
 
 /// Permission to rotate encryption keys.
-/// Automatically granted to creator when using `new_with_encryption`.
+/// Should be granted to PermissionsGroup<Messaging> creator during creation.
 public struct EncryptionKeyRotator() has drop;
 
 // === Structs ===
 
-/// Key for the dynamic field attachment on MessagingGroup.
-public struct EncryptionHistoryKey has copy, drop, store {}
-
-/// Stores encryption key history for a MessagingGroup.
-/// Attached as a dynamic field on MessagingGroup.
-public struct EncryptionHistory has store {
+/// Stores encryption key history for a PermissionsGroup<MessagingApp>.
+/// Derived from the MessagingNamespace + PermissionsGroup<MessagingApp> ID.
+/// There should be 1 PermissionsGroup<MessagingApp> <-> 1 EncryptionHistory pair.
+public struct EncryptionHistory has key, store {
+    id: UID,
+    /// The ID of the associated PermissionsGroup<MessagingApp>
+    group_id: ID,
+    group_index: u64,
     /// Sequential storage of encrypted DEKs. Index = key version.
     /// Each entry is full EncryptedObject bytes from Seal
     /// (contains: version, packageId, id, services, threshold, encryptedShares, ciphertext)
@@ -45,22 +60,28 @@ public struct EncryptionHistory has store {
 
 // === Public Functions ===
 
-/// Creates a new EncryptionHistory with an initial encrypted DEK.
-///
-/// # Parameters
-/// - `initial_encrypted_dek`: The initial encrypted DEK bytes (full EncryptedObject from Seal)
-/// - `ctx`: Transaction context
-///
-/// # Returns
-/// A new `EncryptionHistory` with version 0.
+/// Creates a new EncryptionHistory given an existing PermissionsGroup<Messaging> ID,
+/// and initial ecnrypted DEK bytes.
 public(package) fun new(
+    namespace: &mut MessagingNamespace,
+    group_id: ID,
     initial_encrypted_dek: vector<u8>,
     ctx: &mut TxContext,
 ): EncryptionHistory {
+    assert!(
+        !namespace.exists(EncryptionHistoryTag(namespace.groups_created())),
+        EEncryptionHistoryAlreadyExists,
+    );
     let mut encrypted_keys = table_vec::empty<vector<u8>>(ctx);
     encrypted_keys.push_back(initial_encrypted_dek);
 
     EncryptionHistory {
+        id: derived_object::claim(
+            namespace.uid_mut(),
+            EncryptionHistoryTag(namespace.groups_created()),
+        ),
+        group_index: namespace.groups_created() - 1, // keep it 0-based
+        group_id,
         encrypted_keys,
     }
 }
@@ -71,11 +92,21 @@ public(package) fun new(
 /// # Parameters
 /// - `self`: Mutable reference to the EncryptionHistory
 /// - `new_encrypted_dek`: The new encrypted DEK bytes (full EncryptedObject from Seal)
-public(package) fun rotate_key(
+public fun rotate_key(
     self: &mut EncryptionHistory,
+    group: &PermissionsGroup<Messaging>,
     new_encrypted_dek: vector<u8>,
+    ctx: &mut TxContext,
 ) {
+    assert!(group.has_permission<Messaging, EncryptionKeyRotator>(ctx.sender()), ENotPermitted);
     self.encrypted_keys.push_back(new_encrypted_dek);
+}
+
+// === getters ===
+
+/// Returns the associated PermissionsGroup ID.
+public fun group_id(self: &EncryptionHistory): ID {
+    self.group_id
 }
 
 /// Returns the current key version (0-indexed).
@@ -97,25 +128,15 @@ public fun current_key_version(self: &EncryptionHistory): u64 {
 ///
 /// # Aborts
 /// - If the key version doesn't exist.
-public fun get_encrypted_key(self: &EncryptionHistory, version: u64): vector<u8> {
+public fun encrypted_key(self: &EncryptionHistory, version: u64): &vector<u8> {
     assert!(version < self.encrypted_keys.length(), EKeyVersionNotFound);
-    *self.encrypted_keys.borrow(version)
+    self.encrypted_keys.borrow(version)
 }
 
 /// Returns the encrypted DEK for the current (latest) version.
 ///
 /// # Returns
 /// The encrypted DEK bytes for the current version.
-public fun get_current_encrypted_key(self: &EncryptionHistory): vector<u8> {
-    self.get_encrypted_key(self.current_key_version())
-}
-
-/// Returns the dynamic field key for EncryptionHistory.
-///
-/// Used by the messaging module to access the encryption history.
-///
-/// # Returns
-/// The `EncryptionHistoryKey` for dynamic field access.
-public fun key(): EncryptionHistoryKey {
-    EncryptionHistoryKey {}
+public fun current_encrypted_key(self: &EncryptionHistory): &vector<u8> {
+    self.encrypted_key(self.current_key_version())
 }
