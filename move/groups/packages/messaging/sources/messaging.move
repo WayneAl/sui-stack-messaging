@@ -25,9 +25,13 @@
 ///
 module messaging::messaging;
 
+use groups::permissions_group::{Self, PermissionsGroup};
+use messaging::encryption_history::{Self, EncryptionHistory, EncryptionKeyRotator};
 use sui::derived_object;
 
 // === Error Codes ===
+
+const ENotPermitted: u64 = 0;
 
 // === Witnesses ===
 
@@ -94,4 +98,59 @@ public(package) fun increment_groups_created(self: &mut MessagingNamespace): u64
     let current = self.groups_created;
     self.groups_created = current + 1;
     self.groups_created
+}
+
+// === Public Functions ===
+
+/// Creates a new messaging group with encryption enabled.
+/// Returns both the PermissionsGroup and its associated EncryptionHistory.
+public fun new_group(
+    namespace: &mut MessagingNamespace,
+    initial_encrypted_dek: vector<u8>,
+    ctx: &mut TxContext,
+): (PermissionsGroup<Messaging>, EncryptionHistory) {
+    // 1. Increment counter and create PermissionsGroup<Messaging>
+    let groups_created = namespace.increment_groups_created();
+    let mut group: PermissionsGroup<Messaging> = permissions_group::new_derived<
+        Messaging,
+        encryption_history::PermissionsGroupTag,
+    >(
+        &mut namespace.id,
+        encryption_history::permissions_group_tag(groups_created),
+        ctx,
+    );
+
+    // 2. Grant Messaging & Encryption permissions to the creator
+    let creator = ctx.sender();
+    group.grant_permission<Messaging, MessagingSender>(creator, ctx);
+    group.grant_permission<Messaging, MessagingReader>(creator, ctx);
+    group.grant_permission<Messaging, MessagingEditor>(creator, ctx);
+    group.grant_permission<Messaging, MessagingDeleter>(creator, ctx);
+    group.grant_permission<Messaging, EncryptionKeyRotator>(creator, ctx);
+
+    // 3. Create EncryptionHistory for the group
+    let encryption_history = encryption_history::new(
+        &mut namespace.id,
+        groups_created,
+        object::id(&group),
+        initial_encrypted_dek,
+        ctx,
+    );
+
+    (group, encryption_history)
+}
+
+/// Rotates the encryption key for a group.
+/// Requires EncryptionKeyRotator permission.
+public fun rotate_encryption_key(
+    encryption_history: &mut EncryptionHistory,
+    group: &PermissionsGroup<Messaging>,
+    new_encrypted_dek: vector<u8>,
+    ctx: &mut TxContext,
+) {
+    assert!(
+        group.has_permission<Messaging, EncryptionKeyRotator>(ctx.sender()),
+        ENotPermitted,
+    );
+    encryption_history.rotate_key(new_encrypted_dek);
 }
