@@ -13,6 +13,7 @@
 module messaging::encryption_history;
 
 use sui::derived_object;
+use sui::event;
 use sui::table_vec::{Self, TableVec};
 
 // === Error Codes ===
@@ -48,6 +49,30 @@ public struct EncryptionHistory has key, store {
     encrypted_keys: TableVec<vector<u8>>,
 }
 
+// === Events ===
+
+/// Emitted when a new EncryptionHistory is created.
+public struct EncryptionHistoryCreated has copy, drop {
+    /// ID of the created EncryptionHistory.
+    encryption_history_id: ID,
+    /// ID of the associated PermissionsGroup<Messaging>.
+    group_id: ID,
+    /// Initial encrypted DEK bytes.
+    initial_encrypted_dek: vector<u8>,
+}
+
+/// Emitted when an encryption key is rotated.
+public struct EncryptionKeyRotated has copy, drop {
+    /// ID of the EncryptionHistory.
+    encryption_history_id: ID,
+    /// ID of the associated PermissionsGroup<Messaging>.
+    group_id: ID,
+    /// New key version (0-indexed).
+    new_key_version: u64,
+    /// New encrypted DEK bytes.
+    new_encrypted_dek: vector<u8>,
+}
+
 // === Package Functions ===
 
 /// Creates a new `EncryptionHistory` derived from the namespace.
@@ -79,7 +104,7 @@ public(package) fun new(
     let mut encrypted_keys = table_vec::empty<vector<u8>>(ctx);
     encrypted_keys.push_back(initial_encrypted_dek);
 
-    EncryptionHistory {
+    let encryption_history = EncryptionHistory {
         id: derived_object::claim(
             namespace_uid,
             EncryptionHistoryTag(groups_created),
@@ -87,7 +112,15 @@ public(package) fun new(
         group_index: groups_created - 1, // keep it 0-based
         group_id,
         encrypted_keys,
-    }
+    };
+
+    event::emit(EncryptionHistoryCreated {
+        encryption_history_id: object::id(&encryption_history),
+        group_id,
+        initial_encrypted_dek,
+    });
+
+    encryption_history
 }
 
 /// Appends a new encrypted DEK. Caller must verify permissions.
@@ -100,6 +133,13 @@ public(package) fun rotate_key(
     new_encrypted_dek: vector<u8>,
 ) {
     self.encrypted_keys.push_back(new_encrypted_dek);
+
+    event::emit(EncryptionKeyRotated {
+        encryption_history_id: object::id(self),
+        group_id: self.group_id,
+        new_key_version: self.encrypted_keys.length() - 1,
+        new_encrypted_dek,
+    });
 }
 
 /// Returns the `PermissionsGroupTag` for address derivation.

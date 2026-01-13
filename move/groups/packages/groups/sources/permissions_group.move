@@ -16,6 +16,7 @@ module groups::permissions_group;
 
 use std::type_name::{Self, TypeName};
 use sui::derived_object;
+use sui::event;
 use sui::table::{Self, Table};
 use sui::vec_set::{Self, VecSet};
 
@@ -53,6 +54,64 @@ public struct PermissionsGroup<phantom T: drop> has key, store {
     creator: address,
 }
 
+// === Events ===
+
+/// Emitted when a new PermissionsGroup is created via `new`.
+public struct GroupCreated<phantom T> has copy, drop {
+    /// ID of the created group.
+    group_id: ID,
+    /// Address of the group creator.
+    creator: address,
+}
+
+/// Emitted when a new PermissionsGroup is created via `new_derived`.
+public struct GroupDerived<phantom T> has copy, drop {
+    /// ID of the created group.
+    group_id: ID,
+    /// Address of the group creator.
+    creator: address,
+    /// ID of the parent object from which the group was derived.
+    parent_id: ID,
+    /// Type name of the derivation key used.
+    derivation_key_type: TypeName,
+}
+
+/// Emitted when a member is added to a group.
+public struct MemberAdded<phantom T> has copy, drop {
+    /// ID of the group.
+    group_id: ID,
+    /// Address of the new member.
+    member: address,
+}
+
+/// Emitted when a member is removed from a group.
+public struct MemberRemoved<phantom T> has copy, drop {
+    /// ID of the group.
+    group_id: ID,
+    /// Address of the removed member.
+    member: address,
+}
+
+/// Emitted when permissions are granted to a member.
+public struct PermissionsGranted<phantom T> has copy, drop {
+    /// ID of the group.
+    group_id: ID,
+    /// Address of the member receiving the permissions.
+    member: address,
+    /// Type names of the granted permissions.
+    permissions: vector<TypeName>,
+}
+
+/// Emitted when permissions are revoked from a member.
+public struct PermissionsRevoked<phantom T> has copy, drop {
+    /// ID of the group.
+    group_id: ID,
+    /// Address of the member losing the permissions.
+    member: address,
+    /// Type names of the revoked permissions.
+    permissions: vector<TypeName>,
+}
+
 // === Public Functions ===
 
 /// Creates a new PermissionsGroup with the sender as initial admin.
@@ -73,12 +132,19 @@ public fun new<T: drop>(ctx: &mut TxContext): PermissionsGroup<T> {
     let mut permissions_table = table::new<address, VecSet<TypeName>>(ctx);
     permissions_table.add(creator, creator_permissions_set);
 
-    PermissionsGroup<T> {
+    let group = PermissionsGroup<T> {
         id: object::new(ctx),
         permissions: permissions_table,
         managers_count: 1,
         creator,
-    }
+    };
+
+    event::emit(GroupCreated<T> {
+        group_id: object::id(&group),
+        creator,
+    });
+
+    group
 }
 
 /// Creates a new derived PermissionsGroup with deterministic address.
@@ -114,12 +180,21 @@ public fun new_derived<T: drop, DerivationKey: copy + drop + store>(
     let mut permissions_table = table::new<address, VecSet<TypeName>>(ctx);
     permissions_table.add(creator, creator_permissions_set);
 
-    PermissionsGroup<T> {
+    let group = PermissionsGroup<T> {
         id: derived_object::claim(derivation_uid, derivation_key),
         permissions: permissions_table,
         managers_count: 1,
         creator,
-    }
+    };
+
+    event::emit(GroupDerived<T> {
+        group_id: object::id(&group),
+        creator,
+        parent_id: object::uid_to_inner(derivation_uid),
+        derivation_key_type: type_name::with_defining_ids<DerivationKey>(),
+    });
+
+    group
 }
 
 /// Adds a new member with no initial permissions.
@@ -141,6 +216,11 @@ public fun add_member<T: drop>(
     assert!(self.has_permission<T, MemberAdder>(ctx.sender()), ENotPermitted);
     assert!(!self.is_member<T>(new_member), EAlreadyMember);
     self.permissions.add(new_member, vec_set::empty<TypeName>());
+
+    event::emit(MemberAdded<T> {
+        group_id: object::id(self),
+        member: new_member,
+    });
 }
 
 /// Adds the transaction sender as a member via an actor object.
@@ -165,6 +245,11 @@ public fun object_add_member<T: drop>(
     let new_member = ctx.sender();
     assert!(!self.is_member<T>(new_member), EAlreadyMember);
     self.permissions.add(new_member, vec_set::empty<TypeName>());
+
+    event::emit(MemberAdded<T> {
+        group_id: object::id(self),
+        member: new_member,
+    });
 }
 
 /// Removes a member from the PermissionsGroup.
@@ -187,6 +272,11 @@ public fun remove_member<T: drop>(
     assert!(self.is_member<T>(member), EMemberNotFound);
     self.safe_decrement_managers_count(member);
     self.permissions.remove(member);
+
+    event::emit(MemberRemoved<T> {
+        group_id: object::id(self),
+        member,
+    });
 }
 
 /// Removes the transaction sender from the group via an actor object.
@@ -213,6 +303,11 @@ public fun object_remove_member<T: drop>(
     assert!(self.is_member<T>(member), EMemberNotFound);
     self.safe_decrement_managers_count(member);
     self.permissions.remove(member);
+
+    event::emit(MemberRemoved<T> {
+        group_id: object::id(self),
+        member,
+    });
 }
 
 /// Grants a permission to an existing member.
@@ -237,6 +332,12 @@ public fun grant_permission<T: drop, NewPermission: drop>(
     assert!(self.has_permission<T, PermissionsManager>(ctx.sender()), ENotPermitted);
     assert!(self.is_member<T>(member), EMemberNotFound);
     self.internal_grant_permission<T, NewPermission>(member);
+
+    event::emit(PermissionsGranted<T> {
+        group_id: object::id(self),
+        member,
+        permissions: vector[type_name::with_defining_ids<NewPermission>()],
+    });
 }
 
 /// Grants all base permissions to a member.
@@ -257,12 +358,19 @@ public fun grant_base_permissions<T: drop>(
 ) {
     assert!(self.has_permission<T, PermissionsManager>(ctx.sender()), ENotPermitted);
     assert!(self.is_member<T>(member), EMemberNotFound);
+    let base_permissions = base_permissions_set();
     let member_permissions_set = self.permissions.borrow_mut(member);
-    base_permissions_set().into_keys().do!(|permission| {
+    base_permissions.into_keys().do!(|permission| {
         member_permissions_set.insert(permission);
         if (permission == type_name::with_defining_ids<PermissionsManager>()) {
             self.managers_count = self.managers_count + 1;
         };
+    });
+
+    event::emit(PermissionsGranted<T> {
+        group_id: object::id(self),
+        member,
+        permissions: base_permissions_set().into_keys(),
     });
 }
 
@@ -292,6 +400,12 @@ public fun object_grant_permission<T: drop, NewPermission: drop>(
     let member = ctx.sender();
     assert!(self.is_member<T>(member), EMemberNotFound);
     self.internal_grant_permission<T, NewPermission>(member);
+
+    event::emit(PermissionsGranted<T> {
+        group_id: object::id(self),
+        member,
+        permissions: vector[type_name::with_defining_ids<NewPermission>()],
+    });
 }
 
 /// Revokes a permission from a member.
@@ -325,6 +439,12 @@ public fun revoke_permission<T: drop, ExistingPermission: drop>(
 
     let member_permissions_set = self.permissions.borrow_mut(member);
     member_permissions_set.remove(&type_name::with_defining_ids<ExistingPermission>());
+
+    event::emit(PermissionsRevoked<T> {
+        group_id: object::id(self),
+        member,
+        permissions: vector[type_name::with_defining_ids<ExistingPermission>()],
+    });
 }
 
 /// Revokes all base permissions from a member.
@@ -354,6 +474,12 @@ public fun revoke_base_permissions<T: drop>(
         if (member_permissions_set.contains(&permission)) {
             member_permissions_set.remove(&permission);
         };
+    });
+
+    event::emit(PermissionsRevoked<T> {
+        group_id: object::id(self),
+        member,
+        permissions: base_permissions_set().into_keys(),
     });
 }
 
@@ -392,6 +518,12 @@ public fun object_revoke_permission<T: drop, ExistingPermission: drop>(
 
     let member_permissions_set = self.permissions.borrow_mut(member);
     member_permissions_set.remove(&type_name::with_defining_ids<ExistingPermission>());
+
+    event::emit(PermissionsRevoked<T> {
+        group_id: object::id(self),
+        member,
+        permissions: vector[type_name::with_defining_ids<ExistingPermission>()],
+    });
 }
 
 // === Getters ===
