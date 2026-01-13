@@ -230,3 +230,31 @@ public fun encrypted_key(self: &EncryptionHistory, version: u64): &vector<u8> {
 public fun current_encrypted_key(self: &EncryptionHistory): &vector<u8> {
     self.encrypted_key(self.current_key_version())
 }
+
+// === Unit Tests ===
+
+#[test, expected_failure(abort_code = EEncryptionHistoryAlreadyExists)]
+fun new_duplicate_derivation_key_fails() {
+    let mut ctx = tx_context::dummy();
+    let mut namespace_uid = object::new(&mut ctx);
+
+    // Create first EncryptionHistory with groups_created = 1
+    let _eh1 = new(
+        &mut namespace_uid,
+        1,
+        object::id_from_address(@0x1),
+        b"dek1",
+        &mut ctx,
+    );
+
+    // Try to create second with same groups_created - should fail
+    let _eh2 = new(
+        &mut namespace_uid,
+        1,
+        object::id_from_address(@0x2),
+        b"dek2",
+        &mut ctx,
+    );
+
+    abort
+}

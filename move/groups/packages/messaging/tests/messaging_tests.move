@@ -349,3 +349,69 @@ fun encryption_history_encrypted_key_invalid_version_fails() {
 
     abort
 }
+
+// === EEncryptedDEKTooLarge error tests ===
+
+/// Generate a vector of bytes larger than MAX_ENCRYPTED_DEK_BYTES (1024).
+fun make_oversized_dek(): vector<u8> {
+    let mut dek = vector::empty<u8>();
+    let mut i = 0;
+    while (i < 1025) {
+        dek.push_back(0x42);
+        i = i + 1;
+    };
+    dek
+}
+
+#[test, expected_failure(abort_code = encryption_history::EEncryptedDEKTooLarge)]
+fun create_group_with_oversized_dek_fails() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    messaging::init_for_testing(ts.ctx());
+
+    ts.next_tx(ALICE);
+    let mut namespace = ts.take_shared<MessagingNamespace>();
+
+    // Try to create group with oversized DEK
+    let (_group, _encryption_history) = messaging::create_group(
+        &mut namespace,
+        make_oversized_dek(),
+        ts.ctx(),
+    );
+
+    abort
+}
+
+#[test, expected_failure(abort_code = encryption_history::EEncryptedDEKTooLarge)]
+fun rotate_encryption_key_with_oversized_dek_fails() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    messaging::init_for_testing(ts.ctx());
+
+    ts.next_tx(ALICE);
+    let mut namespace = ts.take_shared<MessagingNamespace>();
+    let (group, encryption_history) = messaging::create_group(
+        &mut namespace,
+        TEST_ENCRYPTED_DEK,
+        ts.ctx(),
+    );
+    transfer::public_share_object(group);
+    transfer::public_share_object(encryption_history);
+    ts::return_shared(namespace);
+
+    // Alice tries to rotate with oversized DEK
+    ts.next_tx(ALICE);
+    let group = ts.take_shared<PermissionsGroup<Messaging>>();
+    let mut encryption_history = ts.take_shared<EncryptionHistory>();
+
+    messaging::rotate_encryption_key(
+        &mut encryption_history,
+        &group,
+        make_oversized_dek(),
+        ts.ctx(),
+    );
+
+    abort
+}
