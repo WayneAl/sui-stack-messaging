@@ -20,6 +20,24 @@ use sui::table_vec::{Self, TableVec};
 
 const EEncryptionHistoryAlreadyExists: u64 = 0;
 const EKeyVersionNotFound: u64 = 1;
+const EEncryptedDEKTooLarge: u64 = 2;
+
+// === Constants ===
+
+/// Maximum allowed size for encrypted DEK bytes.
+///
+/// Accommodates a BCS-serialized Seal EncryptedObject containing:
+/// - AES-256-GCM key (32 bytes) encrypted with AES-256-GCM will result in 48 bytes
+/// - potentially AAD (additional authenticated data) - variable size, typically 16-32 bytes
+/// - Seal package ID (32 bytes)
+/// - Identity bytes: Cretor's Sui address (32 bytes) + nonce (up to 32 bytes)
+/// - services: vector((address (32 bytes), weight (1 byte))) - typically 2-3 entries
+/// - Encrypted key shares - {
+///     nonce(96 bytes),
+///     encryptedShares (vector(32 bytes each)),
+///     encryptedRandomness (32 bytes)
+/// }
+const MAX_ENCRYPTED_DEK_BYTES: u64 = 1024;
 
 // === Derivation Keys ===
 
@@ -57,6 +75,8 @@ public struct EncryptionHistoryCreated has copy, drop {
     encryption_history_id: ID,
     /// ID of the associated PermissionsGroup<Messaging>.
     group_id: ID,
+    /// 0-based index of this group within the namespace.
+    group_index: u64,
     /// Initial encrypted DEK bytes.
     initial_encrypted_dek: vector<u8>,
 }
@@ -90,6 +110,7 @@ public struct EncryptionKeyRotated has copy, drop {
 ///
 /// # Aborts
 /// - `EEncryptionHistoryAlreadyExists`: if derived address is already claimed
+/// - `EEncryptedDEKTooLarge`: if the initial DEK exceeds maximum size
 public(package) fun new(
     namespace_uid: &mut UID,
     groups_created: u64,
@@ -101,15 +122,19 @@ public(package) fun new(
         !derived_object::exists(namespace_uid, EncryptionHistoryTag(groups_created)),
         EEncryptionHistoryAlreadyExists,
     );
+    assert!(initial_encrypted_dek.length() <= MAX_ENCRYPTED_DEK_BYTES, EEncryptedDEKTooLarge);
+
     let mut encrypted_keys = table_vec::empty<vector<u8>>(ctx);
     encrypted_keys.push_back(initial_encrypted_dek);
+
+    let group_index = groups_created - 1; // keep it 0-based
 
     let encryption_history = EncryptionHistory {
         id: derived_object::claim(
             namespace_uid,
             EncryptionHistoryTag(groups_created),
         ),
-        group_index: groups_created - 1, // keep it 0-based
+        group_index,
         group_id,
         encrypted_keys,
     };
@@ -117,6 +142,7 @@ public(package) fun new(
     event::emit(EncryptionHistoryCreated {
         encryption_history_id: object::id(&encryption_history),
         group_id,
+        group_index,
         initial_encrypted_dek,
     });
 
@@ -128,10 +154,11 @@ public(package) fun new(
 /// # Parameters
 /// - `self`: Mutable reference to the EncryptionHistory
 /// - `new_encrypted_dek`: New Seal-encrypted DEK bytes
-public(package) fun rotate_key(
-    self: &mut EncryptionHistory,
-    new_encrypted_dek: vector<u8>,
-) {
+///
+/// # Aborts
+/// - `EEncryptedDEKTooLarge`: if the new DEK exceeds maximum size
+public(package) fun rotate_key(self: &mut EncryptionHistory, new_encrypted_dek: vector<u8>) {
+    assert!(new_encrypted_dek.length() <= MAX_ENCRYPTED_DEK_BYTES, EEncryptedDEKTooLarge);
     self.encrypted_keys.push_back(new_encrypted_dek);
 
     event::emit(EncryptionKeyRotated {
