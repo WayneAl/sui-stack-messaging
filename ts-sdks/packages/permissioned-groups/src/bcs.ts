@@ -1,6 +1,8 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { BcsType } from '@mysten/bcs';
+
 import type { PermissionedGroupsPackageConfig } from './types.js';
 
 import {
@@ -47,23 +49,23 @@ export interface PermissionedGroupsBCSOptions {
  */
 export class PermissionedGroupsBCS {
 	/** Core permission type: super-admin role */
-	readonly Administrator;
+	readonly Administrator: BcsType<ParsedAdministrator, unknown>;
 	/** Core permission type: can manage extension permissions */
-	readonly ExtensionPermissionsManager;
+	readonly ExtensionPermissionsManager: BcsType<ParsedExtensionPermissionsManager, unknown>;
 	/** Main group struct containing membership and permission data */
-	readonly PermissionedGroup;
+	readonly PermissionedGroup: BcsType<ParsedPermissionedGroup, unknown>;
 	/** Event emitted when a group is created */
-	readonly GroupCreated;
+	readonly GroupCreated: BcsType<ParsedGroupCreated, unknown>;
 	/** Event emitted when a group is derived from a parent object */
-	readonly GroupDerived;
+	readonly GroupDerived: BcsType<ParsedGroupDerived, unknown>;
 	/** Event emitted when a member is added to a group */
-	readonly MemberAdded;
+	readonly MemberAdded: BcsType<ParsedMemberAdded, unknown>;
 	/** Event emitted when a member is removed from a group */
-	readonly MemberRemoved;
+	readonly MemberRemoved: BcsType<ParsedMemberRemoved, unknown>;
 	/** Event emitted when permissions are granted to a member */
-	readonly PermissionsGranted;
+	readonly PermissionsGranted: BcsType<ParsedPermissionsGranted, unknown>;
 	/** Event emitted when permissions are revoked from a member */
-	readonly PermissionsRevoked;
+	readonly PermissionsRevoked: BcsType<ParsedPermissionsRevoked, unknown>;
 
 	constructor(options: PermissionedGroupsBCSOptions) {
 		const moduleName = `${options.packageConfig.packageId}::permissioned_group`;
