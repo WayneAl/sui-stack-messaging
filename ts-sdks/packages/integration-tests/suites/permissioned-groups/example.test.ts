@@ -54,4 +54,38 @@ describe('permissioned-groups', () => {
 		expect(client.groups.tx).toBeDefined();
 		expect(client.groups.bcs).toBeDefined();
 	});
+
+	it('should have BCS types with correct package-scoped names', () => {
+		const suiClientUrl = inject('suiClientUrl');
+		const publishedPackages = inject('publishedPackages');
+		const packageId = publishedPackages['permissioned-groups'].packageId;
+
+		const suiClient = new SuiClient({
+			url: suiClientUrl,
+			mvr: {
+				overrides: {
+					packages: {
+						'@local-pkg/permissioned-groups': packageId,
+					},
+				},
+			},
+		});
+
+		const client = suiClient.$extend(
+			permissionedGroups({
+				packageConfig: { packageId },
+			}),
+		);
+
+		// Verify BCS types are defined with correct package-scoped names
+		expect(client.groups.bcs.PermissionedGroup.name).toBe(
+			`${packageId}::permissioned_group::PermissionedGroup`,
+		);
+		expect(client.groups.bcs.Administrator.name).toBe(
+			`${packageId}::permissioned_group::Administrator`,
+		);
+		expect(client.groups.bcs.MemberAdded.name).toBe(
+			`${packageId}::permissioned_group::MemberAdded`,
+		);
+	});
 });
