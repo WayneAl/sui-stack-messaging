@@ -1,10 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { bcs } from '@mysten/sui/bcs';
-import { Transaction } from '@mysten/sui/transactions';
-
-import * as permissionedGroup from './contracts/permissioned_groups/permissioned_group.js';
+import { PermissionedGroupsNotImplementedError } from './error.js';
 import type {
 	HasPermissionViewOptions,
 	IsMemberViewOptions,
@@ -42,15 +39,9 @@ export interface PermissionedGroupsViewOptions {
  * ```
  */
 export class PermissionedGroupsView {
-	#packageConfig: PermissionedGroupsPackageConfig;
-	#witnessType: string;
-	#client: PermissionedGroupsCompatibleClient;
-
-	constructor(options: PermissionedGroupsViewOptions) {
-		this.#packageConfig = options.packageConfig;
-		this.#witnessType = options.witnessType;
-		this.#client = options.client;
-	}
+	// Options stored for future use when the core API supports devInspect/return values.
+	// eslint-disable-next-line @typescript-eslint/no-useless-constructor, @typescript-eslint/no-unused-vars
+	constructor(_options: PermissionedGroupsViewOptions) {}
 
 	/**
 	 * Checks if the given address has the specified permission.
@@ -59,29 +50,16 @@ export class PermissionedGroupsView {
 	 * @param options.member - Address to check
 	 * @param options.permissionType - The permission type to check (e.g., '0xabc::my_app::Editor')
 	 * @returns `true` if the address has the permission, `false` otherwise
+	 *
+	 * @throws {PermissionedGroupsNotImplementedError} This method is not yet implemented.
 	 */
-	async hasPermission(options: HasPermissionViewOptions): Promise<boolean> {
-		const tx = new Transaction();
-		tx.add(
-			permissionedGroup.hasPermission({
-				package: this.#packageConfig.packageId,
-				arguments: {
-					self: options.groupId,
-					member: options.member,
-				},
-				typeArguments: [this.#witnessType, options.permissionType],
-			}),
+	async hasPermission(_options: HasPermissionViewOptions): Promise<boolean> {
+		throw new PermissionedGroupsNotImplementedError(
+			'hasPermission',
+			'The core client API (ClientWithCoreApi) does not yet expose devInspectTransactionBlock ' +
+				'or return values from dryRunTransaction. This will be implemented when the core API ' +
+				'adds support for reading Move function return values.',
 		);
-
-		// TODO: Replace dryRunTransaction with simulateTransaction when available in core API.
-		// devInspect is not yet available through ClientWithCoreApi.
-		const result = await this.#client.core.dryRunTransaction(tx, { showResults: true });
-		const returnValues = result.results?.[0]?.returnValues;
-		if (!returnValues || returnValues.length === 0) {
-			throw new Error('No return value from hasPermission');
-		}
-		const [bytes] = returnValues[0];
-		return bcs.Bool.parse(Uint8Array.from(bytes));
 	}
 
 	/**
@@ -91,27 +69,15 @@ export class PermissionedGroupsView {
 	 * @param options.groupId - Object ID of the PermissionedGroup
 	 * @param options.member - Address to check
 	 * @returns `true` if the address is a member, `false` otherwise
+	 *
+	 * @throws {PermissionedGroupsNotImplementedError} This method is not yet implemented.
 	 */
-	async isMember(options: IsMemberViewOptions): Promise<boolean> {
-		const tx = new Transaction();
-		tx.add(
-			permissionedGroup.isMember({
-				package: this.#packageConfig.packageId,
-				arguments: {
-					self: options.groupId,
-					member: options.member,
-				},
-				typeArguments: [this.#witnessType],
-			}),
+	async isMember(_options: IsMemberViewOptions): Promise<boolean> {
+		throw new PermissionedGroupsNotImplementedError(
+			'isMember',
+			'The core client API (ClientWithCoreApi) does not yet expose devInspectTransactionBlock ' +
+				'or return values from dryRunTransaction. This will be implemented when the core API ' +
+				'adds support for reading Move function return values.',
 		);
-
-		// TODO: Replace dryRunTransaction with simulateTransaction when available in core API.
-		const result = await this.#client.core.dryRunTransaction(tx, { showResults: true });
-		const returnValues = result.results?.[0]?.returnValues;
-		if (!returnValues || returnValues.length === 0) {
-			throw new Error('No return value from isMember');
-		}
-		const [bytes] = returnValues[0];
-		return bcs.Bool.parse(Uint8Array.from(bytes));
 	}
 }

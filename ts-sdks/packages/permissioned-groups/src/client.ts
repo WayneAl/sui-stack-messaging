@@ -1,7 +1,9 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { Signer } from '@mysten/sui/cryptography';
 import type { ClientWithCoreApi } from '@mysten/sui/experimental';
+import type { Transaction } from '@mysten/sui/transactions';
 import { isValidNamedPackage, isValidSuiAddress } from '@mysten/sui/utils';
 import { PermissionedGroupsClientError } from './error.js';
 import {
@@ -9,13 +11,24 @@ import {
 	MAINNET_PERMISSIONED_GROUPS_PACKAGE_CONFIG,
 } from './constants.js';
 import type {
+	GrantPermissionCallOptions,
+	NewDerivedGroupOptions,
+	NewGroupOptions,
+	ObjectGrantPermissionCallOptions,
+	ObjectRemoveMemberCallOptions,
+	ObjectRevokePermissionCallOptions,
 	PermissionedGroupsClientOptions,
 	PermissionedGroupsCompatibleClient,
 	PermissionedGroupsPackageConfig,
+	RemoveMemberCallOptions,
+	RevokePermissionCallOptions,
+	TransferDerivedGroupCallOptions,
+	TransferGroupCallOptions,
 } from './types.js';
 import { PermissionedGroupsCall } from './call.js';
 import { PermissionedGroupsTransactions } from './transactions.js';
 import { PermissionedGroupsBCS } from './bcs.js';
+import { PermissionedGroupsView } from './view.js';
 
 export function permissionedGroups<const Name = 'groups'>({
 	name = 'groups' as Name,
@@ -42,6 +55,7 @@ export class PermissionedGroupsClient {
 
 	call: PermissionedGroupsCall;
 	tx: PermissionedGroupsTransactions;
+	view: PermissionedGroupsView;
 	bcs: PermissionedGroupsBCS;
 
 	constructor(options: PermissionedGroupsClientOptions) {
@@ -85,6 +99,36 @@ export class PermissionedGroupsClient {
 			call: this.call,
 			bcs: this.bcs,
 		});
+		this.view = new PermissionedGroupsView({
+			packageConfig: this.#packageConfig,
+			witnessType: this.#witnessType,
+			client: this.#client,
+		});
+	}
+
+	// === Private Helpers ===
+
+	/**
+	 * Executes a transaction with the given signer and waits for confirmation.
+	 * @throws {PermissionedGroupsClientError} if the transaction fails
+	 */
+	async #executeTransaction(transaction: Transaction, signer: Signer, action: string) {
+		transaction.setSenderIfNotSet(signer.toSuiAddress());
+
+		const { digest, effects } = await signer.signAndExecuteTransaction({
+			transaction,
+			client: this.#client,
+		});
+
+		if (effects?.status.error) {
+			throw new PermissionedGroupsClientError(
+				`Failed to ${action} (${digest}): ${effects?.status.error}`,
+			);
+		}
+
+		await this.#client.core.waitForTransaction({ digest });
+
+		return { digest, effects };
 	}
 
 	/**
@@ -105,5 +149,101 @@ export class PermissionedGroupsClient {
 				`Invalid witnessType address: "${address}". Must be a valid Sui address or MVR package name.`,
 			);
 		}
+	}
+
+	// === Top-Level Imperative Methods ===
+
+	/**
+	 * Creates a new PermissionedGroup and shares it publicly.
+	 * The caller becomes the initial administrator.
+	 */
+	async createAndShareGroup(options: NewGroupOptions) {
+		const transaction = this.tx.createAndShareGroup();
+		return this.#executeTransaction(transaction, options.signer, 'create and share group');
+	}
+
+	/**
+	 * Creates a new PermissionedGroup and transfers it to the specified recipient.
+	 * The caller becomes the initial administrator.
+	 */
+	async createAndTransferGroup(options: NewGroupOptions & TransferGroupCallOptions) {
+		const transaction = this.tx.createAndTransferGroup({ recipient: options.recipient });
+		return this.#executeTransaction(transaction, options.signer, 'create and transfer group');
+	}
+
+	/**
+	 * Creates a derived PermissionedGroup and shares it publicly.
+	 * The address is deterministically derived from the parent UID and derivation key.
+	 */
+	async deriveAndShareGroup(options: NewDerivedGroupOptions) {
+		const { signer, ...callOptions } = options;
+		const transaction = this.tx.deriveAndShareGroup(callOptions);
+		return this.#executeTransaction(transaction, signer, 'derive and share group');
+	}
+
+	/**
+	 * Creates a derived PermissionedGroup and transfers it to the specified recipient.
+	 */
+	async deriveAndTransferGroup(options: NewDerivedGroupOptions & TransferDerivedGroupCallOptions) {
+		const { signer, ...callOptions } = options;
+		const transaction = this.tx.deriveAndTransferGroup(callOptions);
+		return this.#executeTransaction(transaction, signer, 'derive and transfer group');
+	}
+
+	/**
+	 * Grants a permission to a member.
+	 * If the member doesn't exist, they are automatically added to the group.
+	 */
+	async grantPermission(options: NewGroupOptions & GrantPermissionCallOptions) {
+		const { signer, ...callOptions } = options;
+		const transaction = this.tx.grantPermission(callOptions);
+		return this.#executeTransaction(transaction, signer, 'grant permission');
+	}
+
+	/**
+	 * Grants a permission to the transaction sender via an actor object.
+	 */
+	async objectGrantPermission(options: NewGroupOptions & ObjectGrantPermissionCallOptions) {
+		const { signer, ...callOptions } = options;
+		const transaction = this.tx.objectGrantPermission(callOptions);
+		return this.#executeTransaction(transaction, signer, 'object grant permission');
+	}
+
+	/**
+	 * Revokes a permission from a member.
+	 * If this is the member's last permission, they are automatically removed.
+	 */
+	async revokePermission(options: NewGroupOptions & RevokePermissionCallOptions) {
+		const { signer, ...callOptions } = options;
+		const transaction = this.tx.revokePermission(callOptions);
+		return this.#executeTransaction(transaction, signer, 'revoke permission');
+	}
+
+	/**
+	 * Revokes a permission from the transaction sender via an actor object.
+	 */
+	async objectRevokePermission(options: NewGroupOptions & ObjectRevokePermissionCallOptions) {
+		const { signer, ...callOptions } = options;
+		const transaction = this.tx.objectRevokePermission(callOptions);
+		return this.#executeTransaction(transaction, signer, 'object revoke permission');
+	}
+
+	/**
+	 * Removes a member from the PermissionedGroup.
+	 * Requires Administrator permission.
+	 */
+	async removeMember(options: NewGroupOptions & RemoveMemberCallOptions) {
+		const { signer, ...callOptions } = options;
+		const transaction = this.tx.removeMember(callOptions);
+		return this.#executeTransaction(transaction, signer, 'remove member');
+	}
+
+	/**
+	 * Removes the transaction sender from the group via an actor object.
+	 */
+	async objectRemoveMember(options: NewGroupOptions & ObjectRemoveMemberCallOptions) {
+		const { signer, ...callOptions } = options;
+		const transaction = this.tx.objectRemoveMember(callOptions);
+		return this.#executeTransaction(transaction, signer, 'object remove member');
 	}
 }
