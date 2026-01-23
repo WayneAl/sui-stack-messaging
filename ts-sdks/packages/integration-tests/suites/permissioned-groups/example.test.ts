@@ -31,7 +31,7 @@ describe('permissioned-groups', () => {
 		const publishedPackages = inject('publishedPackages');
 		const packageId = publishedPackages['permissioned-groups'].packageId;
 		const dummyTestWitnessPackageId = publishedPackages['dummy-test-witness'].packageId;
-		const witnessType = `${dummyTestWitnessPackageId}::dummy_test_witness::DUMMY_TEST_WITNESS`;
+		const witnessType = `${dummyTestWitnessPackageId}::dummy_test_witness::DummyTestWitness`;
 
 		// Create SuiClient with MVR override for localnet
 		const suiClient = new SuiClient({
@@ -65,7 +65,7 @@ describe('permissioned-groups', () => {
 		const publishedPackages = inject('publishedPackages');
 		const packageId = publishedPackages['permissioned-groups'].packageId;
 		const dummyTestWitnessPackageId = publishedPackages['dummy-test-witness'].packageId;
-		const witnessType = `${dummyTestWitnessPackageId}::dummy_test_witness::DUMMY_TEST_WITNESS`;
+		const witnessType = `${dummyTestWitnessPackageId}::dummy_test_witness::DummyTestWitness`;
 
 		const suiClient = new SuiClient({
 			url: suiClientUrl,
