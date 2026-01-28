@@ -1,17 +1,101 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { PermissionedGroupsCalls } from './calls.js';
+import { Transaction } from '@mysten/sui/transactions';
+
+import type { PermissionedGroupsCall } from './call.js';
+import type {
+	GrantPermissionCallOptions,
+	ObjectGrantPermissionCallOptions,
+	ObjectRemoveMemberCallOptions,
+	ObjectRevokePermissionCallOptions,
+	RemoveMemberCallOptions,
+	RevokePermissionCallOptions,
+} from './types.js';
 
 export interface PermissionedGroupsTransactionsOptions {
-	calls: PermissionedGroupsCalls;
+	call: PermissionedGroupsCall;
 }
 
+/**
+ * Transaction factory methods for permissioned groups.
+ *
+ * Each method returns a complete Transaction object ready for signing.
+ * Useful for dapp-kit integration where you need Transaction objects.
+ *
+ * @example
+ * ```ts
+ * // For use with dapp-kit's signAndExecuteTransaction
+ * const tx = client.groups.tx.grantPermission({
+ *   groupId: '0x...',
+ *   member: '0x...',
+ *   permissionType: '0xabc::my_app::Editor',
+ * });
+ * signAndExecuteTransaction({ transaction: tx });
+ * ```
+ */
 export class PermissionedGroupsTransactions {
-	// @ts-expect-error - Will be used in future implementation
-	#calls: PermissionedGroupsCalls;
+	#call: PermissionedGroupsCall;
 
 	constructor(options: PermissionedGroupsTransactionsOptions) {
-		this.#calls = options.calls;
+		this.#call = options.call;
+	}
+
+	// === Permission Management Functions ===
+
+	/**
+	 * Creates a Transaction that grants a permission to a member.
+	 */
+	grantPermission(options: GrantPermissionCallOptions): Transaction {
+		const tx = new Transaction();
+		tx.add(this.#call.grantPermission(options));
+		return tx;
+	}
+
+	/**
+	 * Creates a Transaction that grants a permission via an actor object.
+	 */
+	objectGrantPermission(options: ObjectGrantPermissionCallOptions): Transaction {
+		const tx = new Transaction();
+		tx.add(this.#call.objectGrantPermission(options));
+		return tx;
+	}
+
+	/**
+	 * Creates a Transaction that revokes a permission from a member.
+	 */
+	revokePermission(options: RevokePermissionCallOptions): Transaction {
+		const tx = new Transaction();
+		tx.add(this.#call.revokePermission(options));
+		return tx;
+	}
+
+	/**
+	 * Creates a Transaction that revokes a permission via an actor object.
+	 */
+	objectRevokePermission(options: ObjectRevokePermissionCallOptions): Transaction {
+		const tx = new Transaction();
+		tx.add(this.#call.objectRevokePermission(options));
+		return tx;
+	}
+
+	// === Member Management Functions ===
+
+	/**
+	 * Creates a Transaction that removes a member from the group.
+	 */
+	removeMember(options: RemoveMemberCallOptions): Transaction {
+		const tx = new Transaction();
+		tx.add(this.#call.removeMember(options));
+		return tx;
+	}
+
+	/**
+	 * Creates a Transaction that removes a member via an actor object.
+	 */
+	objectRemoveMember(options: ObjectRemoveMemberCallOptions): Transaction {
+		const tx = new Transaction();
+		tx.add(this.#call.objectRemoveMember(options));
+		return tx;
 	}
 }
