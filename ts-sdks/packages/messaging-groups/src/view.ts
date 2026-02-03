@@ -4,7 +4,7 @@
 import { bcs } from '@mysten/sui/bcs';
 import { deriveDynamicFieldID } from '@mysten/sui/utils';
 
-import { EncryptionHistory } from './contracts/messaging/encryption_history.js';
+import type { MessagingGroupsBCS } from './bcs.js';
 import type { MessagingGroupsDerive } from './derive.js';
 import type {
 	EncryptedKeyViewOptions,
@@ -17,6 +17,7 @@ export interface MessagingGroupsViewOptions {
 	packageConfig: MessagingGroupsPackageConfig;
 	client: MessagingGroupsCompatibleClient;
 	derive: MessagingGroupsDerive;
+	bcs: MessagingGroupsBCS;
 }
 
 /**
@@ -63,12 +64,14 @@ interface EncryptionHistoryCache {
 export class MessagingGroupsView {
 	#client: MessagingGroupsCompatibleClient;
 	#derive: MessagingGroupsDerive;
+	#bcs: MessagingGroupsBCS;
 	/** Cache of immutable EncryptionHistory fields, keyed by encryptionHistoryId. */
 	#cache = new Map<string, EncryptionHistoryCache>();
 
 	constructor(options: MessagingGroupsViewOptions) {
 		this.#client = options.client;
 		this.#derive = options.derive;
+		this.#bcs = options.bcs;
 	}
 
 	/**
@@ -140,7 +143,7 @@ export class MessagingGroupsView {
 	): Promise<EncryptionHistoryCache & { size: bigint }> {
 		const { object } = await this.#client.core.getObject({ objectId: encryptionHistoryId });
 		const content = await object.content;
-		const parsed = EncryptionHistory.parse(content);
+		const parsed = this.#bcs.EncryptionHistory.parse(content);
 
 		const meta: EncryptionHistoryCache = {
 			tableId: parsed.encrypted_keys.contents.id.id,

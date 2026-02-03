@@ -144,6 +144,7 @@ export class MessagingGroupsClient {
 			packageConfig: this.#packageConfig,
 			client: this.#client,
 			derive: this.derive,
+			bcs: this.bcs,
 		});
 	}
 
