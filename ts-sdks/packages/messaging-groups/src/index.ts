@@ -5,8 +5,9 @@ export { MessagingGroupsClient, messagingGroups } from './client.js';
 export { MessagingGroupsCall } from './call.js';
 export { MessagingGroupsTransactions } from './transactions.js';
 export { MessagingGroupsView } from './view.js';
+export { MessagingGroupsDerive } from './derive.js';
 export { MessagingGroupsBCS } from './bcs.js';
-export { MessagingGroupsClientError, MessagingGroupsNotImplementedError } from './error.js';
+export { MessagingGroupsClientError } from './error.js';
 export * from './types.js';
 export type {
 	ParsedMessagingNamespace,

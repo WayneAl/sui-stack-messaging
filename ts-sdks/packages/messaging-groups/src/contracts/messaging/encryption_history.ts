@@ -10,6 +10,9 @@
  * `EncryptionHistory` is a derived object from `MessagingNamespace`, enabling
  * deterministic address derivation for Seal encryption namespacing.
  *
+ * Uses client-provided UUIDs for derivation, enabling predictable group IDs for
+ * single-transaction encryption with Seal.
+ *
  * All public entry points are in the `messaging` module:
  *
  * - `messaging::create_group` - creates group with encryption
@@ -25,11 +28,11 @@ import * as table_vec from './deps/sui/table_vec.js';
 const $moduleName = '@local-pkg/messaging::encryption_history';
 export const EncryptionHistoryTag = new MoveTuple({
 	name: `${$moduleName}::EncryptionHistoryTag`,
-	fields: [bcs.u64()],
+	fields: [bcs.string()],
 });
 export const PermissionedGroupTag = new MoveTuple({
 	name: `${$moduleName}::PermissionedGroupTag`,
-	fields: [bcs.u64()],
+	fields: [bcs.string()],
 });
 export const EncryptionKeyRotator = new MoveTuple({
 	name: `${$moduleName}::EncryptionKeyRotator`,
@@ -41,8 +44,8 @@ export const EncryptionHistory = new MoveStruct({
 		id: object.UID,
 		/** Associated `PermissionsGroup<Messaging>` ID. */
 		group_id: bcs.Address,
-		/** 0-based index of this group within the namespace. */
-		group_index: bcs.u64(),
+		/** UUID used for derivation. */
+		uuid: bcs.string(),
 		/**
 		 * Versioned encrypted DEKs. Index = version number. Each entry is Seal
 		 * `EncryptedObject` bytes.
@@ -57,8 +60,8 @@ export const EncryptionHistoryCreated = new MoveStruct({
 		encryption_history_id: bcs.Address,
 		/** ID of the associated PermissionsGroup<Messaging>. */
 		group_id: bcs.Address,
-		/** 0-based index of this group within the namespace. */
-		group_index: bcs.u64(),
+		/** UUID used for derivation. */
+		uuid: bcs.string(),
 		/** Initial encrypted DEK bytes. */
 		initial_encrypted_dek: bcs.vector(bcs.u8()),
 	},

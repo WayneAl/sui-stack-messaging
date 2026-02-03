@@ -50,14 +50,21 @@ export class MessagingGroupsCall {
 	 * @param options.initialMembers - Addresses to grant MessagingReader permission
 	 */
 	createGroup(options: CreateGroupCallOptions): (tx: Transaction) => TransactionResult {
-		return messaging.createGroup({
-			package: this.#packageConfig.packageId,
-			arguments: {
-				namespace: this.#packageConfig.namespaceId,
-				initialEncryptedDek: Array.from(options.initialEncryptedDek),
-				initialMembers: this.#buildVecSetArg(options.initialMembers ?? []),
-			},
-		});
+		return (tx: Transaction) => {
+			const initialMembers = this.#buildAddressVecSet(tx, options.initialMembers ?? []);
+
+			return tx.add(
+				messaging.createGroup({
+					package: this.#packageConfig.packageId,
+					arguments: {
+						namespace: this.#packageConfig.namespaceId,
+						uuid: options.uuid,
+						initialEncryptedDek: Array.from(options.initialEncryptedDek),
+						initialMembers,
+					},
+				}),
+			);
+		};
 	}
 
 	/**
@@ -68,14 +75,21 @@ export class MessagingGroupsCall {
 	 * @param options.initialMembers - Addresses to grant MessagingReader permission
 	 */
 	createAndShareGroup(options: CreateGroupCallOptions): (tx: Transaction) => TransactionResult {
-		return messaging.createAndShareGroup({
-			package: this.#packageConfig.packageId,
-			arguments: {
-				namespace: this.#packageConfig.namespaceId,
-				initialEncryptedDek: Array.from(options.initialEncryptedDek),
-				initialMembers: this.#buildVecSetArg(options.initialMembers ?? []),
-			},
-		});
+		return (tx: Transaction) => {
+			const initialMembers = this.#buildAddressVecSet(tx, options.initialMembers ?? []);
+
+			return tx.add(
+				messaging.createAndShareGroup({
+					package: this.#packageConfig.packageId,
+					arguments: {
+						namespace: this.#packageConfig.namespaceId,
+						uuid: options.uuid,
+						initialEncryptedDek: Array.from(options.initialEncryptedDek),
+						initialMembers,
+					},
+				}),
+			);
+		};
 	}
 
 	// === Encryption Functions ===
@@ -142,13 +156,31 @@ export class MessagingGroupsCall {
 	// === Private Helpers ===
 
 	/**
-	 * Builds a VecSet argument for initial members.
-	 * The generated code expects a string representation that gets normalized.
+	 * Build a VecSet<address> from an array of address strings.
+	 * Uses vec_set::empty() for empty sets, or vec_set::from_keys() with a vector of addresses.
 	 */
-	#buildVecSetArg(members: string[]): string {
-		// The codegen normalizes this to VecSet<address>
-		// For now, we pass the members array serialized
-		// This may need adjustment based on how the codegen handles VecSet
-		return JSON.stringify(members);
+	#buildAddressVecSet(tx: Transaction, members: string[]) {
+		if (members.length === 0) {
+			return tx.moveCall({
+				package: '0x2',
+				module: 'vec_set',
+				function: 'empty',
+				arguments: [],
+				typeArguments: ['address'],
+			});
+		}
+
+		const addressVec = tx.makeMoveVec({
+			type: 'address',
+			elements: members.map((member) => tx.pure.address(member)),
+		});
+
+		return tx.moveCall({
+			package: '0x2',
+			module: 'vec_set',
+			function: 'from_keys',
+			arguments: [addressVec],
+			typeArguments: ['address'],
+		});
 	}
 }

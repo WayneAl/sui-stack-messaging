@@ -42,9 +42,11 @@ export interface MessagingGroupsClientOptions {
 
 /** Options for creating a new messaging group */
 export interface CreateGroupCallOptions {
+	/** Client-provided UUID for deterministic address derivation of the group and encryption history */
+	uuid: string;
 	/**
 	 * Initial Seal-encrypted DEK bytes.
-	 * Contains identity bytes format: [creator_address (32 bytes)][nonce (32 bytes)]
+	 * Contains identity bytes format: [group_id (32 bytes)][key_version (8 bytes LE u64)]
 	 */
 	initialEncryptedDek: Uint8Array | number[];
 	/**
@@ -106,18 +108,18 @@ export interface GrantAllPermissionsOptions extends GrantAllPermissionsCallOptio
 	signer: Signer;
 }
 
-// === View Options (use string IDs for devInspect) ===
+// === View Options ===
+
+/**
+ * Reference to an EncryptionHistory — by object ID or by UUID (which derives the ID).
+ * Exactly one must be provided.
+ */
+export type EncryptionHistoryRef =
+	| { encryptionHistoryId: string; uuid?: never }
+	| { uuid: string; encryptionHistoryId?: never };
 
 /** Options for getting the encrypted key at a specific version */
-export interface EncryptedKeyViewOptions {
-	/** Object ID of the EncryptionHistory */
-	encryptionHistoryId: string;
+export type EncryptedKeyViewOptions = EncryptionHistoryRef & {
 	/** Key version (0-indexed) */
 	version: bigint | number;
-}
-
-/** Options for getting data from an EncryptionHistory */
-export interface EncryptionHistoryViewOptions {
-	/** Object ID of the EncryptionHistory */
-	encryptionHistoryId: string;
-}
+};

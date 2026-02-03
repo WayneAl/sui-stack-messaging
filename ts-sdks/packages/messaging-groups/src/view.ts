@@ -1,10 +1,14 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import { MessagingGroupsNotImplementedError } from './error.js';
+import { bcs } from '@mysten/sui/bcs';
+import { deriveDynamicFieldID } from '@mysten/sui/utils';
+
+import { EncryptionHistory } from './contracts/messaging/encryption_history.js';
+import type { MessagingGroupsDerive } from './derive.js';
 import type {
 	EncryptedKeyViewOptions,
-	EncryptionHistoryViewOptions,
+	EncryptionHistoryRef,
 	MessagingGroupsCompatibleClient,
 	MessagingGroupsPackageConfig,
 } from './types.js';
@@ -12,104 +16,154 @@ import type {
 export interface MessagingGroupsViewOptions {
 	packageConfig: MessagingGroupsPackageConfig;
 	client: MessagingGroupsCompatibleClient;
+	derive: MessagingGroupsDerive;
 }
+
+/**
+ * BCS type for TableVec dynamic field entries.
+ * A TableVec stores entries as `Field<u64, V>` dynamic fields on its inner Table.
+ */
+const TableVecEntryField = bcs.struct('Field', {
+	id: bcs.Address,
+	name: bcs.u64(),
+	value: bcs.vector(bcs.u8()),
+});
 
 /**
  * View methods for querying messaging group state.
  *
- * These methods will use transaction simulation to read on-chain state
+ * These methods fetch on-chain state via RPC (`getObject` + dynamic field derivation),
  * without requiring a signature or spending gas.
  *
- * Note: For permission queries (hasPermission, isMember), use the
+ * For permission queries (hasPermission, isMember), use the
  * underlying permissioned-groups client: `client.groups.view.*`
  *
  * @example
  * ```ts
- * const version = await client.messaging.view.currentKeyVersion({
- *   encryptionHistoryId: '0x...',
- * });
+ * // By UUID (derives the EncryptionHistory ID internally)
+ * const key = await client.messaging.view.currentEncryptedKey({ uuid: '...' });
  *
- * const encryptedDek = await client.messaging.view.currentEncryptedKey({
+ * // By EncryptionHistory object ID
+ * const key = await client.messaging.view.encryptedKey({
  *   encryptionHistoryId: '0x...',
+ *   version: 0,
  * });
  * ```
  */
+/**
+ * Cached immutable fields from an EncryptionHistory object.
+ * All fields are set at creation time and never change.
+ */
+interface EncryptionHistoryCache {
+	tableId: string;
+	groupId: string;
+	uuid: string;
+}
+
 export class MessagingGroupsView {
-	// Options stored for future use when the core API supports simulateTransaction.
-	// eslint-disable-next-line @typescript-eslint/no-useless-constructor, @typescript-eslint/no-unused-vars
-	constructor(_options: MessagingGroupsViewOptions) {}
+	#client: MessagingGroupsCompatibleClient;
+	#derive: MessagingGroupsDerive;
+	/** Cache of immutable EncryptionHistory fields, keyed by encryptionHistoryId. */
+	#cache = new Map<string, EncryptionHistoryCache>();
 
-	/**
-	 * Returns the total number of groups created via the namespace.
-	 *
-	 * @throws {MessagingGroupsNotImplementedError} This method is not yet implemented.
-	 */
-	async groupsCreated(): Promise<bigint> {
-		throw new MessagingGroupsNotImplementedError(
-			'groupsCreated',
-			'The core client API (ClientWithCoreApi) does not yet implement devInspectTransactionBlock. ' +
-				'This will be implemented when simulateTransaction is added to the core API.',
-		);
+	constructor(options: MessagingGroupsViewOptions) {
+		this.#client = options.client;
+		this.#derive = options.derive;
 	}
 
 	/**
-	 * Returns the associated group ID from an EncryptionHistory.
+	 * Returns the encrypted DEK for a specific key version.
 	 *
-	 * @param options.encryptionHistoryId - Object ID of the EncryptionHistory
+	 * When the table ID is cached, this makes a single RPC call (the dynamic field fetch).
+	 * On first call for a given EncryptionHistory, it makes two RPC calls
+	 * (one to fetch the object and populate the cache, one for the dynamic field).
 	 *
-	 * @throws {MessagingGroupsNotImplementedError} This method is not yet implemented.
+	 * @param options - EncryptionHistory reference (by ID or UUID) + version
+	 * @returns The encrypted DEK bytes for the requested version
 	 */
-	async groupId(_options: EncryptionHistoryViewOptions): Promise<string> {
-		throw new MessagingGroupsNotImplementedError(
-			'groupId',
-			'The core client API (ClientWithCoreApi) does not yet implement devInspectTransactionBlock. ' +
-				'This will be implemented when simulateTransaction is added to the core API.',
-		);
+	async encryptedKey(options: EncryptedKeyViewOptions): Promise<Uint8Array> {
+		const encryptionHistoryId = this.#resolveEncryptionHistoryId(options);
+		const { tableId } = await this.#getCachedMeta(encryptionHistoryId);
+		return this.#getTableVecEntry(tableId, BigInt(options.version));
 	}
 
 	/**
-	 * Returns the current key version (0-indexed) from an EncryptionHistory.
+	 * Returns the encrypted DEK for the current (latest) key version.
 	 *
-	 * @param options.encryptionHistoryId - Object ID of the EncryptionHistory
+	 * Always makes at least two RPC calls: one to fetch the EncryptionHistory
+	 * (to get the current size, which changes on key rotation), and one for
+	 * the dynamic field entry.
 	 *
-	 * @throws {MessagingGroupsNotImplementedError} This method is not yet implemented.
+	 * @param options - EncryptionHistory reference (by ID or UUID)
+	 * @returns The encrypted DEK bytes for the latest version
 	 */
-	async currentKeyVersion(_options: EncryptionHistoryViewOptions): Promise<bigint> {
-		throw new MessagingGroupsNotImplementedError(
-			'currentKeyVersion',
-			'The core client API (ClientWithCoreApi) does not yet implement devInspectTransactionBlock. ' +
-				'This will be implemented when simulateTransaction is added to the core API.',
-		);
+	async currentEncryptedKey(options: EncryptionHistoryRef): Promise<Uint8Array> {
+		const encryptionHistoryId = this.#resolveEncryptionHistoryId(options);
+		const { tableId, size } = await this.#fetchEncryptionHistory(encryptionHistoryId);
+		const currentVersion = size - 1n;
+		return this.#getTableVecEntry(tableId, currentVersion);
+	}
+
+	// === Private Helpers ===
+
+	/**
+	 * Resolves an EncryptionHistoryRef to an object ID.
+	 * If `uuid` is provided, derives the ID. Otherwise uses the direct ID.
+	 */
+	#resolveEncryptionHistoryId(ref: EncryptionHistoryRef): string {
+		if ('encryptionHistoryId' in ref && ref.encryptionHistoryId) {
+			return ref.encryptionHistoryId;
+		}
+		return this.#derive.encryptionHistoryId({ uuid: ref.uuid! });
 	}
 
 	/**
-	 * Returns the encrypted DEK for a specific version.
-	 *
-	 * @param options.encryptionHistoryId - Object ID of the EncryptionHistory
-	 * @param options.version - Key version (0-indexed)
-	 *
-	 * @throws {MessagingGroupsNotImplementedError} This method is not yet implemented.
+	 * Returns cached immutable metadata for an EncryptionHistory.
+	 * If not cached, fetches the object and populates the cache.
 	 */
-	async encryptedKey(_options: EncryptedKeyViewOptions): Promise<Uint8Array> {
-		throw new MessagingGroupsNotImplementedError(
-			'encryptedKey',
-			'The core client API (ClientWithCoreApi) does not yet implement devInspectTransactionBlock. ' +
-				'This will be implemented when simulateTransaction is added to the core API.',
-		);
+	async #getCachedMeta(encryptionHistoryId: string): Promise<EncryptionHistoryCache> {
+		const cached = this.#cache.get(encryptionHistoryId);
+		if (cached) {
+			return cached;
+		}
+		const { tableId, groupId, uuid } = await this.#fetchEncryptionHistory(encryptionHistoryId);
+		return { tableId, groupId, uuid };
 	}
 
 	/**
-	 * Returns the encrypted DEK for the current (latest) version.
+	 * Fetches the EncryptionHistory object from chain and populates the cache.
 	 *
-	 * @param options.encryptionHistoryId - Object ID of the EncryptionHistory
-	 *
-	 * @throws {MessagingGroupsNotImplementedError} This method is not yet implemented.
+	 * @returns The table ID, current size (mutable — not cached), group ID, and UUID
 	 */
-	async currentEncryptedKey(_options: EncryptionHistoryViewOptions): Promise<Uint8Array> {
-		throw new MessagingGroupsNotImplementedError(
-			'currentEncryptedKey',
-			'The core client API (ClientWithCoreApi) does not yet implement devInspectTransactionBlock. ' +
-				'This will be implemented when simulateTransaction is added to the core API.',
-		);
+	async #fetchEncryptionHistory(
+		encryptionHistoryId: string,
+	): Promise<EncryptionHistoryCache & { size: bigint }> {
+		const { object } = await this.#client.core.getObject({ objectId: encryptionHistoryId });
+		const content = await object.content;
+		const parsed = EncryptionHistory.parse(content);
+
+		const meta: EncryptionHistoryCache = {
+			tableId: parsed.encrypted_keys.contents.id.id,
+			groupId: parsed.group_id,
+			uuid: parsed.uuid,
+		};
+		this.#cache.set(encryptionHistoryId, meta);
+
+		return { ...meta, size: BigInt(parsed.encrypted_keys.contents.size) };
+	}
+
+	/**
+	 * Fetches a single entry from a TableVec by its u64 index.
+	 * Derives the dynamic field ID and fetches the Field<u64, vector<u8>> object.
+	 */
+	async #getTableVecEntry(tableId: string, index: bigint): Promise<Uint8Array> {
+		const keyBytes = bcs.u64().serialize(index).toBytes();
+		const dynamicFieldId = deriveDynamicFieldID(tableId, 'u64', keyBytes);
+
+		const { object } = await this.#client.core.getObject({ objectId: dynamicFieldId });
+		const content = await object.content;
+		const parsed = TableVecEntryField.parse(content);
+
+		return new Uint8Array(parsed.value);
 	}
 }

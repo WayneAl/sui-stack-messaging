@@ -22,6 +22,7 @@ import type {
 import { MessagingGroupsCall } from './call.js';
 import { MessagingGroupsTransactions } from './transactions.js';
 import { MessagingGroupsBCS } from './bcs.js';
+import { MessagingGroupsDerive } from './derive.js';
 import { MessagingGroupsView } from './view.js';
 
 /**
@@ -104,6 +105,7 @@ export class MessagingGroupsClient {
 	tx: MessagingGroupsTransactions;
 	view: MessagingGroupsView;
 	bcs: MessagingGroupsBCS;
+	derive: MessagingGroupsDerive;
 
 	constructor(options: MessagingGroupsClientOptions) {
 		if (!options.client) {
@@ -137,9 +139,11 @@ export class MessagingGroupsClient {
 		this.tx = new MessagingGroupsTransactions({
 			call: this.call,
 		});
+		this.derive = new MessagingGroupsDerive({ packageConfig: this.#packageConfig });
 		this.view = new MessagingGroupsView({
 			packageConfig: this.#packageConfig,
 			client: this.#client,
+			derive: this.derive,
 		});
 	}
 

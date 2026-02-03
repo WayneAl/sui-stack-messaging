@@ -37,7 +37,6 @@ import type { RawTransactionArgument } from '../utils/index.js';
 import { bcs } from '@mysten/sui/bcs';
 import type { Transaction } from '@mysten/sui/transactions';
 import * as object from './deps/sui/object.js';
-import * as table from './deps/sui/table.js';
 const $moduleName = '@local-pkg/messaging::messaging';
 export const MESSAGING = new MoveTuple({ name: `${$moduleName}::MESSAGING`, fields: [bcs.bool()] });
 export const Messaging = new MoveTuple({ name: `${$moduleName}::Messaging`, fields: [bcs.bool()] });
@@ -61,17 +60,11 @@ export const MessagingNamespace = new MoveStruct({
 	name: `${$moduleName}::MessagingNamespace`,
 	fields: {
 		id: object.UID,
-		/** Counter for deterministic address derivation. */
-		groups_created: bcs.u64(),
-		/**
-		 * Tracks used nonces per creator address to prevent front-running. Nonces are
-		 * extracted from the encrypted DEK's identity bytes.
-		 */
-		nonces: table.Table,
 	},
 });
 export interface CreateGroupArguments {
 	namespace: RawTransactionArgument<string>;
+	uuid: RawTransactionArgument<string>;
 	initialEncryptedDek: RawTransactionArgument<number[]>;
 	initialMembers: RawTransactionArgument<string>;
 }
@@ -81,6 +74,7 @@ export interface CreateGroupOptions {
 		| CreateGroupArguments
 		| [
 				namespace: RawTransactionArgument<string>,
+				uuid: RawTransactionArgument<string>,
 				initialEncryptedDek: RawTransactionArgument<number[]>,
 				initialMembers: RawTransactionArgument<string>,
 		  ];
@@ -89,18 +83,11 @@ export interface CreateGroupOptions {
  * Creates a new messaging group with encryption. The transaction sender
  * (`ctx.sender()`) automatically becomes the creator with all permissions.
  *
- * The nonce is extracted from the `initial_encrypted_dek`'s identity bytes and
- * validated:
- *
- * - Identity bytes format: [creator_address (32 bytes)][nonce (32 bytes)]
- * - The creator address in identity bytes must match `ctx.sender()`
- * - The nonce must not have been used before by this creator
- *
  * # Parameters
  *
  * - `namespace`: Mutable reference to the MessagingNamespace
- * - `initial_encrypted_dek`: Initial Seal-encrypted DEK bytes (contains identity
- *   bytes)
+ * - `uuid`: Client-provided UUID for deterministic address derivation
+ * - `initial_encrypted_dek`: Initial Seal-encrypted DEK bytes
  * - `initial_members`: Addresses to grant `MessagingReader` permission (should not
  *   include creator)
  * - `ctx`: Transaction context
@@ -109,26 +96,25 @@ export interface CreateGroupOptions {
  *
  * Tuple of `(PermissionedGroup<Messaging>, EncryptionHistory)`.
  *
- * # Aborts
- *
- * - `EInvalidIdentityBytesCreator`: if identity bytes creator doesn't match
- *   `ctx.sender()`
- * - `ENonceAlreadyUsed`: if the nonce has been used before by this creator
- *
  * # Note
  *
  * If `initial_members` contains the creator's address, it is silently skipped (no
  * abort). This handles the common case where the creator might be mistakenly
  * included in the initial members list.
+ *
+ * # Aborts
+ *
+ * - If the UUID has already been used (duplicate derivation)
  */
 export function createGroup(options: CreateGroupOptions) {
 	const packageAddress = options.package ?? '@local-pkg/messaging';
 	const argumentsTypes = [
 		`${packageAddress}::messaging::MessagingNamespace`,
+		'0x0000000000000000000000000000000000000000000000000000000000000001::string::String',
 		'vector<u8>',
 		'0x0000000000000000000000000000000000000000000000000000000000000002::vec_set::VecSet<address>',
 	] satisfies string[];
-	const parameterNames = ['namespace', 'initialEncryptedDek', 'initialMembers'];
+	const parameterNames = ['namespace', 'uuid', 'initialEncryptedDek', 'initialMembers'];
 	return (tx: Transaction) =>
 		tx.moveCall({
 			package: packageAddress,
@@ -139,6 +125,7 @@ export function createGroup(options: CreateGroupOptions) {
 }
 export interface CreateAndShareGroupArguments {
 	namespace: RawTransactionArgument<string>;
+	uuid: RawTransactionArgument<string>;
 	initialEncryptedDek: RawTransactionArgument<number[]>;
 	initialMembers: RawTransactionArgument<string>;
 }
@@ -148,6 +135,7 @@ export interface CreateAndShareGroupOptions {
 		| CreateAndShareGroupArguments
 		| [
 				namespace: RawTransactionArgument<string>,
+				uuid: RawTransactionArgument<string>,
 				initialEncryptedDek: RawTransactionArgument<number[]>,
 				initialMembers: RawTransactionArgument<string>,
 		  ];
@@ -158,6 +146,7 @@ export interface CreateAndShareGroupOptions {
  * # Parameters
  *
  * - `namespace`: Mutable reference to the MessagingNamespace
+ * - `uuid`: Client-provided UUID for deterministic address derivation
  * - `initial_encrypted_dek`: Initial Seal-encrypted DEK bytes
  * - `initial_members`: Set of addresses to grant `MessagingReader` permission
  * - `ctx`: Transaction context
@@ -171,10 +160,11 @@ export function createAndShareGroup(options: CreateAndShareGroupOptions) {
 	const packageAddress = options.package ?? '@local-pkg/messaging';
 	const argumentsTypes = [
 		`${packageAddress}::messaging::MessagingNamespace`,
+		'0x0000000000000000000000000000000000000000000000000000000000000001::string::String',
 		'vector<u8>',
 		'0x0000000000000000000000000000000000000000000000000000000000000002::vec_set::VecSet<address>',
 	] satisfies string[];
-	const parameterNames = ['namespace', 'initialEncryptedDek', 'initialMembers'];
+	const parameterNames = ['namespace', 'uuid', 'initialEncryptedDek', 'initialMembers'];
 	return (tx: Transaction) =>
 		tx.moveCall({
 			package: packageAddress,
@@ -306,78 +296,6 @@ export function grantAllPermissions(options: GrantAllPermissionsOptions) {
 			package: packageAddress,
 			module: 'messaging',
 			function: 'grant_all_permissions',
-			arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-		});
-}
-export interface GroupsCreatedArguments {
-	namespace: RawTransactionArgument<string>;
-}
-export interface GroupsCreatedOptions {
-	package?: string;
-	arguments: GroupsCreatedArguments | [namespace: RawTransactionArgument<string>];
-}
-/**
- * Returns the number of groups created via this namespace.
- *
- * # Parameters
- *
- * - `namespace`: Reference to the MessagingNamespace
- *
- * # Returns
- *
- * The total count of groups created.
- */
-export function groupsCreated(options: GroupsCreatedOptions) {
-	const packageAddress = options.package ?? '@local-pkg/messaging';
-	const argumentsTypes = [`${packageAddress}::messaging::MessagingNamespace`] satisfies string[];
-	const parameterNames = ['namespace'];
-	return (tx: Transaction) =>
-		tx.moveCall({
-			package: packageAddress,
-			module: 'messaging',
-			function: 'groups_created',
-			arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-		});
-}
-export interface SetupGroupDisplayArguments {
-	pgPublisher: RawTransactionArgument<string>;
-	publisher: RawTransactionArgument<string>;
-}
-export interface SetupGroupDisplayOptions {
-	package?: string;
-	arguments:
-		| SetupGroupDisplayArguments
-		| [pgPublisher: RawTransactionArgument<string>, publisher: RawTransactionArgument<string>];
-}
-/**
- * Sets up `Display<PermissionedGroup<Messaging>>` using the shared
- * PermissionedGroupPublisher. Must be called after package deployment with the
- * Publisher from init.
- *
- * # Parameters
- *
- * - `pg_publisher`: Reference to the shared PermissionedGroupPublisher
- * - `publisher`: Reference to this package's Publisher (proves ownership of
- *   Messaging type)
- * - `ctx`: Transaction context
- *
- * # Returns
- *
- * `Display<PermissionedGroup<Messaging>>` to be transferred to the appropriate
- * owner.
- */
-export function setupGroupDisplay(options: SetupGroupDisplayOptions) {
-	const packageAddress = options.package ?? '@local-pkg/messaging';
-	const argumentsTypes = [
-		'@local-pkg/permissioned-groups::display::PermissionedGroupPublisher',
-		'0x0000000000000000000000000000000000000000000000000000000000000002::package::Publisher',
-	] satisfies string[];
-	const parameterNames = ['pgPublisher', 'publisher'];
-	return (tx: Transaction) =>
-		tx.moveCall({
-			package: packageAddress,
-			module: 'messaging',
-			function: 'setup_group_display',
 			arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
 		});
 }

@@ -122,6 +122,9 @@ importers:
 
   packages/integration-tests:
     dependencies:
+      '@mysten/messaging-groups':
+        specifier: workspace:*
+        version: link:../messaging-groups
       '@mysten/permissioned-groups':
         specifier: workspace:*
         version: link:../permissioned-groups

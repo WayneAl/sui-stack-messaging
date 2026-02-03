@@ -30,20 +30,23 @@ const MockEncryptedObject = bcs.struct('MockEncryptedObject', {
 /**
  * Creates a mock encrypted DEK that matches the expected Seal EncryptedObject BCS format.
  *
- * Identity bytes format: [creator_address (32 bytes)][nonce (32 bytes)]
+ * Identity bytes format: [group_id (32 bytes)][key_version (8 bytes LE u64)]
+ *
+ * For group creation, the group_id is not yet known, but the contract only stores
+ * the bytes — validation happens in seal_approve_reader. So mock bytes suffice.
  */
-function createMockEncryptedDEK(creatorAddress: string): Uint8Array {
-	// Remove 0x prefix and convert to bytes
-	const addressBytes = fromHex(creatorAddress);
+function createMockEncryptedDEK(): Uint8Array {
+	// Mock group ID (32 bytes) — unknown at creation time
+	const groupIdBytes = new Uint8Array(32);
+	crypto.getRandomValues(groupIdBytes);
 
-	// Generate a random nonce (32 bytes)
-	const nonceBytes = new Uint8Array(32);
-	crypto.getRandomValues(nonceBytes);
+	// Key version 0 as little-endian u64 (8 bytes)
+	const keyVersionBytes = new Uint8Array(8);
 
-	// Create identity bytes: [creator_address (32 bytes)][nonce (32 bytes)]
-	const identityBytes = new Uint8Array(64);
-	identityBytes.set(addressBytes, 0);
-	identityBytes.set(nonceBytes, 32);
+	// Create identity bytes: [group_id (32 bytes)][key_version (8 bytes LE u64)]
+	const identityBytes = new Uint8Array(40);
+	identityBytes.set(groupIdBytes, 0);
+	identityBytes.set(keyVersionBytes, 32);
 
 	// Serialize using BCS
 	return MockEncryptedObject.serialize({
@@ -197,7 +200,6 @@ describe('messaging-groups', () => {
 		const suiClientUrl = inject('suiClientUrl');
 		const publishedPackages = inject('publishedPackages');
 		const namespaceId = inject('messagingNamespaceId');
-		const adminAccount = inject('adminAccount');
 
 		const permissionedGroupsPackageId = publishedPackages['permissioned-groups'].packageId;
 		const messagingPackageId = publishedPackages['messaging'].packageId;
@@ -232,10 +234,11 @@ describe('messaging-groups', () => {
 			);
 
 		// Create a mock encrypted DEK with proper identity bytes
-		const mockEncryptedDek = createMockEncryptedDEK(adminAccount.address);
+		const mockEncryptedDek = createMockEncryptedDEK();
 
 		// Build a createAndShareGroup transaction (just verify it builds without errors)
 		const tx = client.messaging.tx.createAndShareGroup({
+			uuid: crypto.randomUUID(),
 			initialEncryptedDek: mockEncryptedDek,
 			initialMembers: [],
 		});
@@ -284,17 +287,208 @@ describe('messaging-groups', () => {
 				}),
 			);
 
-		// Create encrypted DEK with proper identity bytes matching the signer's address
-		const mockEncryptedDek = createMockEncryptedDEK(keypair.toSuiAddress());
+		// Create mock encrypted DEK
+		const mockEncryptedDek = createMockEncryptedDEK();
 
 		// Execute createAndShareGroup
 		const result = await client.messaging.createAndShareGroup({
 			signer: keypair,
+			uuid: crypto.randomUUID(),
 			initialEncryptedDek: mockEncryptedDek,
 			initialMembers: [],
 		});
 
 		expect(result.digest).toBeDefined();
 		expect(result.digest).toMatch(/^[A-Za-z0-9+/=]+$/);
+	});
+
+	it('should derive correct object IDs from UUID', async () => {
+		const suiClientUrl = inject('suiClientUrl');
+		const publishedPackages = inject('publishedPackages');
+		const namespaceId = inject('messagingNamespaceId');
+		const adminAccount = inject('adminAccount');
+
+		const permissionedGroupsPackageId = publishedPackages['permissioned-groups'].packageId;
+		const messagingPackageId = publishedPackages['messaging'].packageId;
+		const witnessType = `${messagingPackageId}::messaging::Messaging`;
+
+		const suiClient = new SuiClient({
+			url: suiClientUrl,
+			mvr: {
+				overrides: {
+					packages: {
+						'@local-pkg/permissioned-groups': permissionedGroupsPackageId,
+						'@local-pkg/messaging': messagingPackageId,
+					},
+				},
+			},
+		});
+
+		const keypair = Ed25519Keypair.fromSecretKey(adminAccount.secretKey);
+
+		const client = suiClient
+			.$extend(
+				permissionedGroups({
+					packageConfig: { packageId: permissionedGroupsPackageId },
+					witnessType,
+				}),
+			)
+			.$extend(
+				messagingGroups({
+					packageConfig: {
+						packageId: messagingPackageId,
+						namespaceId: namespaceId!,
+					},
+				}),
+			);
+
+		const uuid = crypto.randomUUID();
+		const mockEncryptedDek = createMockEncryptedDEK();
+
+		// Derive expected IDs before creation
+		const expectedGroupId = client.messaging.derive.groupId({ uuid });
+		const expectedEncryptionHistoryId = client.messaging.derive.encryptionHistoryId({ uuid });
+
+		// Create the group on-chain
+		const result = await client.messaging.createAndShareGroup({
+			signer: keypair,
+			uuid,
+			initialEncryptedDek: mockEncryptedDek,
+			initialMembers: [],
+		});
+
+		expect(result.digest).toBeDefined();
+
+		// Verify derived IDs match actual on-chain objects by fetching them
+		const groupObj = await suiClient.getObject({ id: expectedGroupId });
+		expect(groupObj.data).toBeDefined();
+		expect(groupObj.data?.objectId).toBe(expectedGroupId);
+
+		const historyObj = await suiClient.getObject({ id: expectedEncryptionHistoryId });
+		expect(historyObj.data).toBeDefined();
+		expect(historyObj.data?.objectId).toBe(expectedEncryptionHistoryId);
+	});
+
+	it('should read back encrypted key via view (by UUID)', async () => {
+		const suiClientUrl = inject('suiClientUrl');
+		const publishedPackages = inject('publishedPackages');
+		const namespaceId = inject('messagingNamespaceId');
+		const adminAccount = inject('adminAccount');
+
+		const permissionedGroupsPackageId = publishedPackages['permissioned-groups'].packageId;
+		const messagingPackageId = publishedPackages['messaging'].packageId;
+		const witnessType = `${messagingPackageId}::messaging::Messaging`;
+
+		const suiClient = new SuiClient({
+			url: suiClientUrl,
+			mvr: {
+				overrides: {
+					packages: {
+						'@local-pkg/permissioned-groups': permissionedGroupsPackageId,
+						'@local-pkg/messaging': messagingPackageId,
+					},
+				},
+			},
+		});
+
+		const keypair = Ed25519Keypair.fromSecretKey(adminAccount.secretKey);
+
+		const client = suiClient
+			.$extend(
+				permissionedGroups({
+					packageConfig: { packageId: permissionedGroupsPackageId },
+					witnessType,
+				}),
+			)
+			.$extend(
+				messagingGroups({
+					packageConfig: {
+						packageId: messagingPackageId,
+						namespaceId: namespaceId!,
+					},
+				}),
+			);
+
+		const uuid = crypto.randomUUID();
+		const mockEncryptedDek = createMockEncryptedDEK();
+
+		// Create the group on-chain
+		await client.messaging.createAndShareGroup({
+			signer: keypair,
+			uuid,
+			initialEncryptedDek: mockEncryptedDek,
+			initialMembers: [],
+		});
+
+		// Read back using UUID
+		const currentKey = await client.messaging.view.currentEncryptedKey({ uuid });
+		expect(currentKey).toBeInstanceOf(Uint8Array);
+		expect(currentKey.length).toBeGreaterThan(0);
+
+		// Should match the original DEK bytes
+		expect(Array.from(currentKey)).toEqual(Array.from(mockEncryptedDek));
+
+		// Also verify encryptedKey with explicit version
+		const keyV0 = await client.messaging.view.encryptedKey({ uuid, version: 0 });
+		expect(Array.from(keyV0)).toEqual(Array.from(mockEncryptedDek));
+	});
+
+	it('should read back encrypted key via view (by encryptionHistoryId)', async () => {
+		const suiClientUrl = inject('suiClientUrl');
+		const publishedPackages = inject('publishedPackages');
+		const namespaceId = inject('messagingNamespaceId');
+		const adminAccount = inject('adminAccount');
+
+		const permissionedGroupsPackageId = publishedPackages['permissioned-groups'].packageId;
+		const messagingPackageId = publishedPackages['messaging'].packageId;
+		const witnessType = `${messagingPackageId}::messaging::Messaging`;
+
+		const suiClient = new SuiClient({
+			url: suiClientUrl,
+			mvr: {
+				overrides: {
+					packages: {
+						'@local-pkg/permissioned-groups': permissionedGroupsPackageId,
+						'@local-pkg/messaging': messagingPackageId,
+					},
+				},
+			},
+		});
+
+		const keypair = Ed25519Keypair.fromSecretKey(adminAccount.secretKey);
+
+		const client = suiClient
+			.$extend(
+				permissionedGroups({
+					packageConfig: { packageId: permissionedGroupsPackageId },
+					witnessType,
+				}),
+			)
+			.$extend(
+				messagingGroups({
+					packageConfig: {
+						packageId: messagingPackageId,
+						namespaceId: namespaceId!,
+					},
+				}),
+			);
+
+		const uuid = crypto.randomUUID();
+		const mockEncryptedDek = createMockEncryptedDEK();
+
+		// Create the group on-chain
+		await client.messaging.createAndShareGroup({
+			signer: keypair,
+			uuid,
+			initialEncryptedDek: mockEncryptedDek,
+			initialMembers: [],
+		});
+
+		// Derive the encryptionHistoryId, then read using it directly
+		const encryptionHistoryId = client.messaging.derive.encryptionHistoryId({ uuid });
+
+		const currentKey = await client.messaging.view.currentEncryptedKey({ encryptionHistoryId });
+		expect(currentKey).toBeInstanceOf(Uint8Array);
+		expect(Array.from(currentKey)).toEqual(Array.from(mockEncryptedDek));
 	});
 });
