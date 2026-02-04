@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { SuiClient, SuiObjectChange } from '@mysten/sui/client';
+import type { SuiJsonRpcClient, SuiObjectChange } from '@mysten/sui/jsonRpc';
 import type { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 
 export interface Account {
@@ -51,7 +51,7 @@ export interface BaseTestContext {
 	graphqlPort: number;
 	faucetPort: number;
 	suiToolsContainerId: string;
-	suiClient: SuiClient;
+	suiClient: SuiJsonRpcClient;
 	adminAccount: Account;
 }
 

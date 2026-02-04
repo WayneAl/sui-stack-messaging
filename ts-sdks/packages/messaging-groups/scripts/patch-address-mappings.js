@@ -13,8 +13,11 @@
  * Run this after `sui move summary` and before `sui-ts-codegen generate`.
  */
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Maps Move package names to their MVR names
 const DEPENDENCY_MVR_MAPPINGS = {

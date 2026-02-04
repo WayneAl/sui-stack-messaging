@@ -1,5 +1,6 @@
-// Copyright (c) Mysten Labs, Inc.
-// SPDX-License-Identifier: Apache-2.0
+/**************************************************************
+ * THIS FILE IS GENERATED AND SHOULD NOT BE MANUALLY MODIFIED *
+ **************************************************************/
 
 /**
  * Module: messaging
@@ -32,11 +33,14 @@
  * - Revoking the last permission automatically removes the member
  */
 
-import { MoveTuple, MoveStruct, normalizeMoveArguments } from '../utils/index.js';
-import type { RawTransactionArgument } from '../utils/index.js';
+import {
+	MoveTuple,
+	MoveStruct,
+	normalizeMoveArguments,
+	type RawTransactionArgument,
+} from '../utils/index.js';
 import { bcs } from '@mysten/sui/bcs';
-import type { Transaction } from '@mysten/sui/transactions';
-import * as object from './deps/sui/object.js';
+import { type Transaction } from '@mysten/sui/transactions';
 const $moduleName = '@local-pkg/messaging::messaging';
 export const MESSAGING = new MoveTuple({ name: `${$moduleName}::MESSAGING`, fields: [bcs.bool()] });
 export const Messaging = new MoveTuple({ name: `${$moduleName}::Messaging`, fields: [bcs.bool()] });
@@ -59,7 +63,7 @@ export const MessagingEditor = new MoveTuple({
 export const MessagingNamespace = new MoveStruct({
 	name: `${$moduleName}::MessagingNamespace`,
 	fields: {
-		id: object.UID,
+		id: bcs.Address,
 	},
 });
 export interface CreateGroupArguments {
@@ -108,12 +112,10 @@ export interface CreateGroupOptions {
  */
 export function createGroup(options: CreateGroupOptions) {
 	const packageAddress = options.package ?? '@local-pkg/messaging';
-	const argumentsTypes = [
-		`${packageAddress}::messaging::MessagingNamespace`,
-		'0x0000000000000000000000000000000000000000000000000000000000000001::string::String',
-		'vector<u8>',
-		'0x0000000000000000000000000000000000000000000000000000000000000002::vec_set::VecSet<address>',
-	] satisfies string[];
+	const argumentsTypes = [null, '0x1::string::String', 'vector<u8>', null] satisfies (
+		| string
+		| null
+	)[];
 	const parameterNames = ['namespace', 'uuid', 'initialEncryptedDek', 'initialMembers'];
 	return (tx: Transaction) =>
 		tx.moveCall({
@@ -158,12 +160,10 @@ export interface CreateAndShareGroupOptions {
  */
 export function createAndShareGroup(options: CreateAndShareGroupOptions) {
 	const packageAddress = options.package ?? '@local-pkg/messaging';
-	const argumentsTypes = [
-		`${packageAddress}::messaging::MessagingNamespace`,
-		'0x0000000000000000000000000000000000000000000000000000000000000001::string::String',
-		'vector<u8>',
-		'0x0000000000000000000000000000000000000000000000000000000000000002::vec_set::VecSet<address>',
-	] satisfies string[];
+	const argumentsTypes = [null, '0x1::string::String', 'vector<u8>', null] satisfies (
+		| string
+		| null
+	)[];
 	const parameterNames = ['namespace', 'uuid', 'initialEncryptedDek', 'initialMembers'];
 	return (tx: Transaction) =>
 		tx.moveCall({
@@ -204,11 +204,7 @@ export interface RotateEncryptionKeyOptions {
  */
 export function rotateEncryptionKey(options: RotateEncryptionKeyOptions) {
 	const packageAddress = options.package ?? '@local-pkg/messaging';
-	const argumentsTypes = [
-		`${packageAddress}::encryption_history::EncryptionHistory`,
-		`@local-pkg/permissioned-groups::permissioned_group::PermissionedGroup<${packageAddress}::messaging::Messaging>`,
-		'vector<u8>',
-	] satisfies string[];
+	const argumentsTypes = [null, null, 'vector<u8>'] satisfies (string | null)[];
 	const parameterNames = ['encryptionHistory', 'group', 'newEncryptedDek'];
 	return (tx: Transaction) =>
 		tx.moveCall({
@@ -241,15 +237,12 @@ export interface GrantAllMessagingPermissionsOptions {
  *
  * # Aborts
  *
- * - `ENotPermitted` (from `permissions_group`): if caller doesn't have
- *   `CorePermissionsManager` or `ExtensionPermissionsManager` permission
+ * - `ENotPermitted` (from `permissioned_group`): if caller doesn't have
+ *   `Administrator` or `ExtensionPermissionsManager` permission
  */
 export function grantAllMessagingPermissions(options: GrantAllMessagingPermissionsOptions) {
 	const packageAddress = options.package ?? '@local-pkg/messaging';
-	const argumentsTypes = [
-		`@local-pkg/permissioned-groups::permissioned_group::PermissionedGroup<${packageAddress}::messaging::Messaging>`,
-		'address',
-	] satisfies string[];
+	const argumentsTypes = [null, 'address'] satisfies (string | null)[];
 	const parameterNames = ['group', 'member'];
 	return (tx: Transaction) =>
 		tx.moveCall({
@@ -286,10 +279,7 @@ export interface GrantAllPermissionsOptions {
  */
 export function grantAllPermissions(options: GrantAllPermissionsOptions) {
 	const packageAddress = options.package ?? '@local-pkg/messaging';
-	const argumentsTypes = [
-		`@local-pkg/permissioned-groups::permissioned_group::PermissionedGroup<${packageAddress}::messaging::Messaging>`,
-		'address',
-	] satisfies string[];
+	const argumentsTypes = [null, 'address'] satisfies (string | null)[];
 	const parameterNames = ['group', 'member'];
 	return (tx: Transaction) =>
 		tx.moveCall({

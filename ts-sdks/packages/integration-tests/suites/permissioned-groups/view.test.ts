@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, it, expect, inject, beforeAll } from 'vitest';
-import { SuiClient } from '@mysten/sui/client';
-import type { ClientWithExtensions } from '@mysten/sui/experimental';
+import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
+import type { ClientWithExtensions } from '@mysten/sui/client';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { Transaction } from '@mysten/sui/transactions';
 import { requestSuiFromFaucetV2 } from '@mysten/sui/faucet';
 import { permissionedGroups, PermissionedGroupsClient } from '@mysten/permissioned-groups';
 
 describe('PermissionedGroupsView', () => {
-	let suiClient: ClientWithExtensions<{ groups: PermissionedGroupsClient }, SuiClient>;
+	let suiClient: ClientWithExtensions<{ groups: PermissionedGroupsClient }, SuiJsonRpcClient>;
 	let adminKeypair: Ed25519Keypair;
 	let adminAddress: string;
 	let packageId: string;
@@ -31,9 +31,10 @@ describe('PermissionedGroupsView', () => {
 		adminKeypair = Ed25519Keypair.fromSecretKey(adminAccount.secretKey);
 		adminAddress = adminAccount.address;
 
-		// Create SuiClient with MVR override and extend with PermissionedGroupsClient
-		const baseClient = new SuiClient({
+		// Create SuiJsonRpcClient with MVR override and extend with PermissionedGroupsClient
+		const baseClient = new SuiJsonRpcClient({
 			url: suiClientUrl,
+			network: 'localnet',
 			mvr: {
 				overrides: {
 					packages: {
@@ -65,16 +66,22 @@ describe('PermissionedGroupsView', () => {
 			client: suiClient,
 		});
 
-		await suiClient.waitForTransaction({ digest: result.digest });
+		const txResult = result.Transaction ?? result.FailedTransaction;
+		if (!txResult || !txResult.status.success) {
+			throw new Error('Transaction failed');
+		}
+
+		await suiClient.core.waitForTransaction({ result });
 
 		// Extract the created group ID from the transaction effects
 		const txDetails = await suiClient.getTransactionBlock({
-			digest: result.digest,
+			digest: txResult.digest,
 			options: { showObjectChanges: true },
 		});
 
 		const createdGroup = txDetails.objectChanges?.find(
-			(change) => change.type === 'created' && change.objectType.includes('PermissionedGroup'),
+			(change: { type: string; objectType?: string }) =>
+				change.type === 'created' && change.objectType?.includes('PermissionedGroup'),
 		);
 
 		if (!createdGroup || createdGroup.type !== 'created') {

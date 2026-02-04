@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Signer } from '@mysten/sui/cryptography';
-import type { ClientWithCoreApi } from '@mysten/sui/experimental';
+import type { ClientWithCoreApi } from '@mysten/sui/client';
 import type { Transaction } from '@mysten/sui/transactions';
 import { isValidNamedPackage, isValidSuiAddress } from '@mysten/sui/utils';
 import { PermissionedGroupsClientError } from './error.js';
@@ -89,7 +89,10 @@ export class PermissionedGroupsClient {
 			packageConfig: this.#packageConfig,
 			witnessType: this.#witnessType,
 		});
-		this.bcs = new PermissionedGroupsBCS({ packageConfig: this.#packageConfig });
+		this.bcs = new PermissionedGroupsBCS({
+			packageConfig: this.#packageConfig,
+			witnessType: this.#witnessType,
+		});
 		this.tx = new PermissionedGroupsTransactions({
 			call: this.call,
 		});
@@ -109,20 +112,25 @@ export class PermissionedGroupsClient {
 	async #executeTransaction(transaction: Transaction, signer: Signer, action: string) {
 		transaction.setSenderIfNotSet(signer.toSuiAddress());
 
-		const { digest, effects } = await signer.signAndExecuteTransaction({
+		const result = await signer.signAndExecuteTransaction({
 			transaction,
 			client: this.#client,
 		});
 
-		if (effects?.status.error) {
+		const tx = result.Transaction ?? result.FailedTransaction;
+		if (!tx) {
+			throw new PermissionedGroupsClientError(`Failed to ${action}: no transaction result`);
+		}
+
+		if (!tx.status.success) {
 			throw new PermissionedGroupsClientError(
-				`Failed to ${action} (${digest}): ${effects?.status.error}`,
+				`Failed to ${action} (${tx.digest}): ${tx.status.error}`,
 			);
 		}
 
-		await this.#client.core.waitForTransaction({ digest });
+		await this.#client.core.waitForTransaction({ result });
 
-		return { digest, effects };
+		return { digest: tx.digest, effects: tx.effects };
 	}
 
 	/**

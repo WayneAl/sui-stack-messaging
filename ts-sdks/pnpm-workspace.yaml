@@ -2,6 +2,10 @@ autoInstallPeers: false
 # Enforce that packages must be at least 2 days old before they're installed
 # This reduces the risk of supply chain attacks from newly published packages
 minimumReleaseAge: 2880
+minimumReleaseAgeExclude:
+  - '@mysten/sui'
+  - '@mysten/bcs'
+  - '@mysten/codegen'
 packages:
   - 'packages/**'
   - '!**/dist/**'

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Signer } from '@mysten/sui/cryptography';
-import type { ClientWithCoreApi } from '@mysten/sui/experimental';
+import type { ClientWithCoreApi } from '@mysten/sui/client';
 import type { Transaction } from '@mysten/sui/transactions';
 
 import { MessagingGroupsClientError } from './error.js';
@@ -30,9 +30,11 @@ import { MessagingGroupsView } from './view.js';
  *
  * @example
  * ```ts
- * const client = new SuiClient({ url: 'https://...' })
- *   .$extend(permissionedGroups({ witnessType: `${pkg}::messaging::Messaging`, packageConfig }))
- *   .$extend(messagingGroups({ packageConfig }));
+ * // Use a single $extend call with all extensions
+ * const client = new SuiClient({ url: 'https://...' }).$extend(
+ *   permissionedGroups({ witnessType: `${pkg}::messaging::Messaging`, packageConfig }),
+ *   messagingGroups({ packageConfig }),
+ * );
  *
  * // Access the messaging client
  * client.messaging.createAndShareGroup({ ... });
@@ -48,15 +50,13 @@ export function messagingGroups<const Name = 'messaging'>({
 	return {
 		name,
 		register: (client: ClientWithCoreApi) => {
-			// Validate that permissioned-groups extension is present
-			const clientWithGroups = client as MessagingGroupsCompatibleClient;
-			if (!clientWithGroups.groups) {
-				throw new MessagingGroupsClientError(
-					'MessagingGroupsClient requires PermissionedGroupsClient extension. ' +
-						'Use client.$extend(permissionedGroups({ witnessType, packageConfig })) first.',
-				);
-			}
-			return new MessagingGroupsClient({ client: clientWithGroups, packageConfig });
+			// Cast to MessagingGroupsCompatibleClient — the v2 SDK's $extend passes
+			// the raw unwrapped client to register(), so extensions from prior $extend
+			// calls are not available here. Use a single $extend call with all extensions.
+			return new MessagingGroupsClient({
+				client: client as MessagingGroupsCompatibleClient,
+				packageConfig,
+			});
 		},
 	};
 }
@@ -157,20 +157,25 @@ export class MessagingGroupsClient {
 	async #executeTransaction(transaction: Transaction, signer: Signer, action: string) {
 		transaction.setSenderIfNotSet(signer.toSuiAddress());
 
-		const { digest, effects } = await signer.signAndExecuteTransaction({
+		const result = await signer.signAndExecuteTransaction({
 			transaction,
 			client: this.#client,
 		});
 
-		if (effects?.status.error) {
+		const tx = result.Transaction ?? result.FailedTransaction;
+		if (!tx) {
+			throw new MessagingGroupsClientError(`Failed to ${action}: no transaction result`);
+		}
+
+		if (!tx.status.success) {
 			throw new MessagingGroupsClientError(
-				`Failed to ${action} (${digest}): ${effects?.status.error}`,
+				`Failed to ${action} (${tx.digest}): ${tx.status.error}`,
 			);
 		}
 
-		await this.#client.core.waitForTransaction({ digest });
+		await this.#client.core.waitForTransaction({ result });
 
-		return { digest, effects };
+		return { digest: tx.digest, effects: tx.effects };
 	}
 
 	// === Top-Level Imperative Methods ===

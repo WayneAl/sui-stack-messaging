@@ -43,6 +43,7 @@
 		},
 		"build": {
 			"dependsOn": ["^build"],
+			"inputs": ["src/**", "*.ts", "*.mjs", "tsconfig.json", "tsdown.config.ts", "package.json"],
 			"outputs": [
 				"build/**",
 				"dist/**",

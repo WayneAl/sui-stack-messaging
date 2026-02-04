@@ -1,5 +1,6 @@
-// Copyright (c) Mysten Labs, Inc.
-// SPDX-License-Identifier: Apache-2.0
+/**************************************************************
+ * THIS FILE IS GENERATED AND SHOULD NOT BE MANUALLY MODIFIED *
+ **************************************************************/
 
 /**
  * Module: seal_policies
@@ -23,9 +24,8 @@
  * - Must be in the same package used during `seal.encrypt`.
  */
 
-import type { Transaction } from '@mysten/sui/transactions';
-import { normalizeMoveArguments } from '../utils/index.js';
-import type { RawTransactionArgument } from '../utils/index.js';
+import { type Transaction } from '@mysten/sui/transactions';
+import { normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.js';
 export interface SealApproveReaderArguments {
 	id: RawTransactionArgument<number[]>;
 	group: RawTransactionArgument<string>;
@@ -62,11 +62,7 @@ export interface SealApproveReaderOptions {
  */
 export function sealApproveReader(options: SealApproveReaderOptions) {
 	const packageAddress = options.package ?? '@local-pkg/messaging';
-	const argumentsTypes = [
-		'vector<u8>',
-		`@local-pkg/permissioned-groups::permissioned_group::PermissionedGroup<${packageAddress}::messaging::Messaging>`,
-		`${packageAddress}::encryption_history::EncryptionHistory`,
-	] satisfies string[];
+	const argumentsTypes = ['vector<u8>', null, null] satisfies (string | null)[];
 	const parameterNames = ['id', 'group', 'encryptionHistory'];
 	return (tx: Transaction) =>
 		tx.moveCall({

@@ -21,7 +21,12 @@ export type ParsedPermissionedGroup = (typeof PermissionedGroup)['$inferType'];
 export type ParsedAdministrator = (typeof Administrator)['$inferType'];
 export type ParsedExtensionPermissionsManager = (typeof ExtensionPermissionsManager)['$inferType'];
 export type ParsedGroupCreated = (typeof GroupCreated)['$inferType'];
-export type ParsedGroupDerived = (typeof GroupDerived)['$inferType'];
+export type ParsedGroupDerived<DerivationKey = unknown> = {
+	group_id: string;
+	creator: string;
+	parent_id: string;
+	derivation_key: DerivationKey;
+};
 export type ParsedMemberAdded = (typeof MemberAdded)['$inferType'];
 export type ParsedMemberRemoved = (typeof MemberRemoved)['$inferType'];
 export type ParsedPermissionsGranted = (typeof PermissionsGranted)['$inferType'];
@@ -29,6 +34,7 @@ export type ParsedPermissionsRevoked = (typeof PermissionsRevoked)['$inferType']
 
 export interface PermissionedGroupsBCSOptions {
 	packageConfig: PermissionedGroupsPackageConfig;
+	witnessType: string;
 }
 
 /**
@@ -56,8 +62,6 @@ export class PermissionedGroupsBCS {
 	readonly PermissionedGroup: BcsType<ParsedPermissionedGroup, unknown>;
 	/** Event emitted when a group is created */
 	readonly GroupCreated: BcsType<ParsedGroupCreated, unknown>;
-	/** Event emitted when a group is derived from a parent object */
-	readonly GroupDerived: BcsType<ParsedGroupDerived, unknown>;
 	/** Event emitted when a member is added to a group */
 	readonly MemberAdded: BcsType<ParsedMemberAdded, unknown>;
 	/** Event emitted when a member is removed from a group */
@@ -67,8 +71,13 @@ export class PermissionedGroupsBCS {
 	/** Event emitted when permissions are revoked from a member */
 	readonly PermissionsRevoked: BcsType<ParsedPermissionsRevoked, unknown>;
 
+	readonly #moduleName: string;
+	readonly #witnessType: string;
+
 	constructor(options: PermissionedGroupsBCSOptions) {
 		const moduleName = `${options.packageConfig.packageId}::permissioned_group`;
+		this.#moduleName = moduleName;
+		this.#witnessType = options.witnessType;
 
 		this.Administrator = Administrator.transform({
 			name: `${moduleName}::Administrator`,
@@ -77,25 +86,31 @@ export class PermissionedGroupsBCS {
 			name: `${moduleName}::ExtensionPermissionsManager`,
 		});
 		this.PermissionedGroup = PermissionedGroup.transform({
-			name: `${moduleName}::PermissionedGroup`,
+			name: `${moduleName}::PermissionedGroup<${options.witnessType}>`,
 		});
 		this.GroupCreated = GroupCreated.transform({
-			name: `${moduleName}::GroupCreated`,
-		});
-		this.GroupDerived = GroupDerived.transform({
-			name: `${moduleName}::GroupDerived`,
+			name: `${moduleName}::GroupCreated<${options.witnessType}>`,
 		});
 		this.MemberAdded = MemberAdded.transform({
-			name: `${moduleName}::MemberAdded`,
+			name: `${moduleName}::MemberAdded<${options.witnessType}>`,
 		});
 		this.MemberRemoved = MemberRemoved.transform({
-			name: `${moduleName}::MemberRemoved`,
+			name: `${moduleName}::MemberRemoved<${options.witnessType}>`,
 		});
 		this.PermissionsGranted = PermissionsGranted.transform({
-			name: `${moduleName}::PermissionsGranted`,
+			name: `${moduleName}::PermissionsGranted<${options.witnessType}>`,
 		});
 		this.PermissionsRevoked = PermissionsRevoked.transform({
-			name: `${moduleName}::PermissionsRevoked`,
+			name: `${moduleName}::PermissionsRevoked<${options.witnessType}>`,
+		});
+	}
+
+	/** Event emitted when a group is derived from a parent object */
+	GroupDerived<DerivationKey extends BcsType<any>>(
+		derivationKeyType: DerivationKey,
+	): BcsType<ParsedGroupDerived<DerivationKey['$inferType']>, unknown> {
+		return GroupDerived(derivationKeyType).transform({
+			name: `${this.#moduleName}::GroupDerived<${this.#witnessType}, ${derivationKeyType.name}>`,
 		});
 	}
 }
