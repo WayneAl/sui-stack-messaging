@@ -8,13 +8,13 @@ import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { describe, expect, it } from 'vitest';
 
 import type { MessagingGroupsView } from '../../src/view.js';
+import { MessagingGroupsDerive } from '../../src/derive.js';
 import { EnvelopeEncryption } from '../../src/encryption/envelope-encryption.js';
-import { DEK_LENGTH, NONCE_LENGTH } from '../../src/encryption/dek-manager.js';
+import { NONCE_LENGTH } from '../../src/encryption/dek-manager.js';
 import { createMockSealClient } from './helpers/mock-seal-client.js';
 
 const MOCK_PACKAGE_ID = '0x' + 'ab'.repeat(32);
-const MOCK_GROUP_ID = '0x' + 'cd'.repeat(32);
-const MOCK_ENCRYPTION_HISTORY_ID = '0x' + 'ef'.repeat(32);
+const MOCK_NAMESPACE_ID = '0x' + '99'.repeat(32);
 
 const mockSealSuiClient = {} as SealCompatibleClient;
 
@@ -38,38 +38,76 @@ function createMockSuiClient(): ClientWithCoreApi {
 	} as unknown as ClientWithCoreApi;
 }
 
-function createMockView(): MessagingGroupsView {
-	return {} as MessagingGroupsView;
+function createMockView(currentKeyVersion = 0n): MessagingGroupsView {
+	return {
+		getCurrentKeyVersion: async () => currentKeyVersion,
+	} as unknown as MessagingGroupsView;
 }
 
-function createEnvelopeEncryption() {
+function createMockDerive(): MessagingGroupsDerive {
+	return new MessagingGroupsDerive({
+		packageConfig: { packageId: MOCK_PACKAGE_ID, namespaceId: MOCK_NAMESPACE_ID },
+	});
+}
+
+function createEnvelopeEncryption(currentKeyVersion = 0n) {
+	const derive = createMockDerive();
 	return new EnvelopeEncryption({
 		sealClient: createMockSealClient(),
 		suiClient: createMockSuiClient(),
-		view: createMockView(),
+		view: createMockView(currentKeyVersion),
+		derive,
 		packageId: MOCK_PACKAGE_ID,
 	});
 }
 
 describe('EnvelopeEncryption', () => {
-	describe('generateDEK', () => {
-		it('should generate a 32-byte DEK with encrypted counterpart', async () => {
+	describe('generateGroupDEK', () => {
+		it('should generate a UUID and encrypted DEK', async () => {
 			const ee = createEnvelopeEncryption();
 
-			const result = await ee.generateDEK({ groupId: MOCK_GROUP_ID });
+			const result = await ee.generateGroupDEK();
 
-			expect(result.dek.length).toBe(DEK_LENGTH);
+			expect(result.uuid).toBeDefined();
+			expect(typeof result.uuid).toBe('string');
 			expect(result.encryptedDek.length).toBeGreaterThan(0);
-			expect(result.identity.groupId).toBe(MOCK_GROUP_ID);
-			expect(result.identity.keyVersion).toBe(0n);
 		});
 
-		it('should use provided keyVersion', async () => {
+		it('should use a provided UUID', async () => {
 			const ee = createEnvelopeEncryption();
+			const uuid = 'my-custom-uuid';
 
-			const result = await ee.generateDEK({ groupId: MOCK_GROUP_ID, keyVersion: 3n });
+			const result = await ee.generateGroupDEK(uuid);
 
-			expect(result.identity.keyVersion).toBe(3n);
+			expect(result.uuid).toBe(uuid);
+			expect(result.encryptedDek.length).toBeGreaterThan(0);
+		});
+	});
+
+	describe('generateRotationDEK', () => {
+		it('should generate a rotation DEK for the next version', async () => {
+			const ee = createEnvelopeEncryption(2n);
+			const derive = createMockDerive();
+			const uuid = 'rotation-test-uuid';
+			const groupId = derive.groupId({ uuid });
+			const encryptionHistoryId = derive.encryptionHistoryId({ uuid });
+
+			const result = await ee.generateRotationDEK({ groupId, encryptionHistoryId });
+
+			expect(result.encryptedDek.length).toBeGreaterThan(0);
+			expect(result.groupId).toBe(groupId);
+			expect(result.encryptionHistoryId).toBe(encryptionHistoryId);
+		});
+
+		it('should derive IDs from UUID', async () => {
+			const ee = createEnvelopeEncryption(0n);
+			const derive = createMockDerive();
+			const uuid = 'derive-test-uuid';
+
+			const result = await ee.generateRotationDEK({ uuid });
+
+			expect(result.groupId).toBe(derive.groupId({ uuid }));
+			expect(result.encryptionHistoryId).toBe(derive.encryptionHistoryId({ uuid }));
 		});
 	});
 
@@ -79,12 +117,15 @@ describe('EnvelopeEncryption', () => {
 			const sessionKey = createTestSessionKey();
 			const plaintext = new TextEncoder().encode('hello world');
 
-			// Generate DEK first — this warms the cache
-			await ee.generateDEK({ groupId: MOCK_GROUP_ID, keyVersion: 0n });
+			// Generate group DEK — this warms the cache at version 0
+			const { uuid } = await ee.generateGroupDEK();
+			const derive = createMockDerive();
+			const groupId = derive.groupId({ uuid });
+			const encryptionHistoryId = derive.encryptionHistoryId({ uuid });
 
 			const envelope = await ee.encrypt({
-				groupId: MOCK_GROUP_ID,
-				encryptionHistoryId: MOCK_ENCRYPTION_HISTORY_ID,
+				groupId,
+				encryptionHistoryId,
 				keyVersion: 0n,
 				sessionKey,
 				data: plaintext,
@@ -95,8 +136,8 @@ describe('EnvelopeEncryption', () => {
 			expect(envelope.keyVersion).toBe(0n);
 
 			const decrypted = await ee.decrypt({
-				groupId: MOCK_GROUP_ID,
-				encryptionHistoryId: MOCK_ENCRYPTION_HISTORY_ID,
+				groupId,
+				encryptionHistoryId,
 				keyVersion: 0n,
 				sessionKey,
 				envelope,
@@ -111,11 +152,14 @@ describe('EnvelopeEncryption', () => {
 			const plaintext = new TextEncoder().encode('secret message');
 			const aad = new TextEncoder().encode('metadata');
 
-			await ee.generateDEK({ groupId: MOCK_GROUP_ID, keyVersion: 0n });
+			const { uuid } = await ee.generateGroupDEK();
+			const derive = createMockDerive();
+			const groupId = derive.groupId({ uuid });
+			const encryptionHistoryId = derive.encryptionHistoryId({ uuid });
 
 			const envelope = await ee.encrypt({
-				groupId: MOCK_GROUP_ID,
-				encryptionHistoryId: MOCK_ENCRYPTION_HISTORY_ID,
+				groupId,
+				encryptionHistoryId,
 				keyVersion: 0n,
 				sessionKey,
 				data: plaintext,
@@ -125,8 +169,8 @@ describe('EnvelopeEncryption', () => {
 			expect(envelope.aad).toEqual(aad);
 
 			const decrypted = await ee.decrypt({
-				groupId: MOCK_GROUP_ID,
-				encryptionHistoryId: MOCK_ENCRYPTION_HISTORY_ID,
+				groupId,
+				encryptionHistoryId,
 				keyVersion: 0n,
 				sessionKey,
 				envelope,
@@ -140,11 +184,14 @@ describe('EnvelopeEncryption', () => {
 			const sessionKey = createTestSessionKey();
 			const plaintext = new TextEncoder().encode('secret');
 
-			await ee.generateDEK({ groupId: MOCK_GROUP_ID, keyVersion: 0n });
+			const { uuid } = await ee.generateGroupDEK();
+			const derive = createMockDerive();
+			const groupId = derive.groupId({ uuid });
+			const encryptionHistoryId = derive.encryptionHistoryId({ uuid });
 
 			const envelope = await ee.encrypt({
-				groupId: MOCK_GROUP_ID,
-				encryptionHistoryId: MOCK_ENCRYPTION_HISTORY_ID,
+				groupId,
+				encryptionHistoryId,
 				keyVersion: 0n,
 				sessionKey,
 				data: plaintext,
@@ -156,8 +203,8 @@ describe('EnvelopeEncryption', () => {
 
 			await expect(
 				ee.decrypt({
-					groupId: MOCK_GROUP_ID,
-					encryptionHistoryId: MOCK_ENCRYPTION_HISTORY_ID,
+					groupId,
+					encryptionHistoryId,
 					keyVersion: 0n,
 					sessionKey,
 					envelope,
@@ -173,19 +220,22 @@ describe('EnvelopeEncryption', () => {
 			const data1 = new TextEncoder().encode('message 1');
 			const data2 = new TextEncoder().encode('message 2');
 
-			await ee.generateDEK({ groupId: MOCK_GROUP_ID, keyVersion: 0n });
+			const { uuid } = await ee.generateGroupDEK();
+			const derive = createMockDerive();
+			const groupId = derive.groupId({ uuid });
+			const encryptionHistoryId = derive.encryptionHistoryId({ uuid });
 
 			const env1 = await ee.encrypt({
-				groupId: MOCK_GROUP_ID,
-				encryptionHistoryId: MOCK_ENCRYPTION_HISTORY_ID,
+				groupId,
+				encryptionHistoryId,
 				keyVersion: 0n,
 				sessionKey,
 				data: data1,
 			});
 
 			const env2 = await ee.encrypt({
-				groupId: MOCK_GROUP_ID,
-				encryptionHistoryId: MOCK_ENCRYPTION_HISTORY_ID,
+				groupId,
+				encryptionHistoryId,
 				keyVersion: 0n,
 				sessionKey,
 				data: data2,
@@ -193,15 +243,15 @@ describe('EnvelopeEncryption', () => {
 
 			// Both should decrypt correctly (same DEK)
 			const dec1 = await ee.decrypt({
-				groupId: MOCK_GROUP_ID,
-				encryptionHistoryId: MOCK_ENCRYPTION_HISTORY_ID,
+				groupId,
+				encryptionHistoryId,
 				keyVersion: 0n,
 				sessionKey,
 				envelope: env1,
 			});
 			const dec2 = await ee.decrypt({
-				groupId: MOCK_GROUP_ID,
-				encryptionHistoryId: MOCK_ENCRYPTION_HISTORY_ID,
+				groupId,
+				encryptionHistoryId,
 				keyVersion: 0n,
 				sessionKey,
 				envelope: env2,
@@ -212,18 +262,24 @@ describe('EnvelopeEncryption', () => {
 		});
 
 		it('should support different key versions for the same group', async () => {
-			const ee = createEnvelopeEncryption();
+			// Mock view returns version 0 for the first rotation call
+			const ee = createEnvelopeEncryption(0n);
 			const sessionKey = createTestSessionKey();
 			const data = new TextEncoder().encode('test data');
 
-			// Generate DEKs for two key versions
-			await ee.generateDEK({ groupId: MOCK_GROUP_ID, keyVersion: 0n });
-			await ee.generateDEK({ groupId: MOCK_GROUP_ID, keyVersion: 1n });
+			// Generate initial DEK (version 0) via group creation
+			const { uuid } = await ee.generateGroupDEK();
+			const derive = createMockDerive();
+			const groupId = derive.groupId({ uuid });
+			const encryptionHistoryId = derive.encryptionHistoryId({ uuid });
+
+			// Generate rotation DEK (version 1) — mock view says current is 0, so next is 1
+			await ee.generateRotationDEK({ groupId, encryptionHistoryId });
 
 			// Encrypt with version 0
 			const env0 = await ee.encrypt({
-				groupId: MOCK_GROUP_ID,
-				encryptionHistoryId: MOCK_ENCRYPTION_HISTORY_ID,
+				groupId,
+				encryptionHistoryId,
 				keyVersion: 0n,
 				sessionKey,
 				data,
@@ -231,8 +287,8 @@ describe('EnvelopeEncryption', () => {
 
 			// Encrypt with version 1
 			const env1 = await ee.encrypt({
-				groupId: MOCK_GROUP_ID,
-				encryptionHistoryId: MOCK_ENCRYPTION_HISTORY_ID,
+				groupId,
+				encryptionHistoryId,
 				keyVersion: 1n,
 				sessionKey,
 				data,
@@ -240,15 +296,15 @@ describe('EnvelopeEncryption', () => {
 
 			// Both should decrypt correctly with their respective versions
 			const dec0 = await ee.decrypt({
-				groupId: MOCK_GROUP_ID,
-				encryptionHistoryId: MOCK_ENCRYPTION_HISTORY_ID,
+				groupId,
+				encryptionHistoryId,
 				keyVersion: 0n,
 				sessionKey,
 				envelope: env0,
 			});
 			const dec1 = await ee.decrypt({
-				groupId: MOCK_GROUP_ID,
-				encryptionHistoryId: MOCK_ENCRYPTION_HISTORY_ID,
+				groupId,
+				encryptionHistoryId,
 				keyVersion: 1n,
 				sessionKey,
 				envelope: env1,

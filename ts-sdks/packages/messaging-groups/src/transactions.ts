@@ -8,6 +8,7 @@ import type {
 	CreateGroupCallOptions,
 	GrantAllMessagingPermissionsCallOptions,
 	GrantAllPermissionsCallOptions,
+	RemoveMemberCallOptions,
 	RotateEncryptionKeyCallOptions,
 } from './types.js';
 
@@ -19,13 +20,13 @@ export interface MessagingGroupsTransactionsOptions {
  * Transaction factory methods for messaging groups.
  *
  * Each method returns a complete Transaction object ready for signing.
- * Useful for dapp-kit integration where you need Transaction objects.
+ * Async thunks (from group creation, key rotation, member removal) are
+ * resolved at transaction `build()` time.
  *
  * @example
  * ```ts
  * // For use with dapp-kit's signAndExecuteTransaction
  * const tx = client.messaging.tx.createAndShareGroup({
- *   initialEncryptedDek: encryptedDekBytes,
  *   initialMembers: ['0x...'],
  * });
  * signAndExecuteTransaction({ transaction: tx });
@@ -44,7 +45,7 @@ export class MessagingGroupsTransactions {
 	 * Creates a Transaction that creates a new messaging group.
 	 * Returns a tuple of (PermissionedGroup<Messaging>, EncryptionHistory).
 	 */
-	createGroup(options: CreateGroupCallOptions): Transaction {
+	createGroup(options?: CreateGroupCallOptions): Transaction {
 		const tx = new Transaction();
 		tx.add(this.#call.createGroup(options));
 		return tx;
@@ -53,7 +54,7 @@ export class MessagingGroupsTransactions {
 	/**
 	 * Creates a Transaction that creates a new messaging group and shares both objects.
 	 */
-	createAndShareGroup(options: CreateGroupCallOptions): Transaction {
+	createAndShareGroup(options?: CreateGroupCallOptions): Transaction {
 		const tx = new Transaction();
 		tx.add(this.#call.createAndShareGroup(options));
 		return tx;
@@ -67,6 +68,17 @@ export class MessagingGroupsTransactions {
 	rotateEncryptionKey(options: RotateEncryptionKeyCallOptions): Transaction {
 		const tx = new Transaction();
 		tx.add(this.#call.rotateEncryptionKey(options));
+		return tx;
+	}
+
+	// === Member Management Functions ===
+
+	/**
+	 * Creates a Transaction that removes a member and rotates the encryption key.
+	 */
+	removeMember(options: RemoveMemberCallOptions): Transaction {
+		const tx = new Transaction();
+		tx.add(this.#call.removeMember(options));
 		return tx;
 	}
 

@@ -7,6 +7,8 @@ import type { ClientCache, ClientWithCoreApi } from '@mysten/sui/client';
 import { Transaction, type TransactionResult } from '@mysten/sui/transactions';
 import { fromHex } from '@mysten/sui/utils';
 
+import type { MessagingGroupsDerive } from '../derive.js';
+import type { GroupRef } from '../types.js';
 import type { MessagingGroupsView } from '../view.js';
 import type { CryptoPrimitives } from './crypto-primitives.js';
 import { getDefaultCryptoPrimitives } from './crypto-primitives.js';
@@ -63,6 +65,8 @@ export interface EnvelopeEncryptionConfig {
 	suiClient: ClientWithCoreApi;
 	/** View layer for fetching encrypted keys from EncryptionHistory. */
 	view: MessagingGroupsView;
+	/** Derive layer for deterministic ID derivation. */
+	derive: MessagingGroupsDerive;
 	/** Move package ID for the messaging module. */
 	packageId: string;
 	/** Pluggable crypto primitives (default: Web Crypto). */
@@ -88,11 +92,13 @@ export class EnvelopeEncryption {
 	readonly #packageId: string;
 	readonly #suiClient: ClientWithCoreApi;
 	readonly #view: MessagingGroupsView;
+	readonly #derive: MessagingGroupsDerive;
 	readonly #dekCache: ClientCache;
 
 	constructor(config: EnvelopeEncryptionConfig) {
 		this.#suiClient = config.suiClient;
 		this.#view = config.view;
+		this.#derive = config.derive;
 		this.#packageId = config.packageId;
 		this.#crypto = config.cryptoPrimitives ?? getDefaultCryptoPrimitives();
 		this.#dekCache = config.suiClient.cache.scope('dek');
@@ -107,12 +113,52 @@ export class EnvelopeEncryption {
 	// === High-Level API ===
 
 	/**
-	 * Generate a new DEK and Seal-encrypt it.
+	 * Generate a UUID (if not provided), derive the group ID, and generate
+	 * a Seal-encrypted DEK for the group's initial encryption key (version 0).
 	 *
-	 * Use this at group creation time or when rotating the encryption key.
-	 * The returned `encryptedDek` should be stored on-chain.
+	 * Used by `createGroup` / `createAndShareGroup`.
 	 */
-	async generateDEK(options: {
+	async generateGroupDEK(providedUuid?: string): Promise<{
+		uuid: string;
+		encryptedDek: Uint8Array;
+	}> {
+		const uuid = providedUuid ?? this.#crypto.generateUUID();
+		const groupId = this.#derive.groupId({ uuid });
+		const { encryptedDek } = await this.#generateDEK({ groupId });
+		return { uuid, encryptedDek };
+	}
+
+	/**
+	 * Fetch the current key version, generate a new DEK for the next version,
+	 * and Seal-encrypt it.
+	 *
+	 * Used by `rotateEncryptionKey` and `removeMember`.
+	 *
+	 * Accepts either explicit `groupId` + `encryptionHistoryId`, or a `uuid`
+	 * (which derives both IDs internally).
+	 */
+	async generateRotationDEK(
+		options: GroupRef,
+	): Promise<GeneratedDEK & { groupId: string; encryptionHistoryId: string }> {
+		const groupId = options.groupId ?? this.#derive.groupId({ uuid: options.uuid! });
+		const encryptionHistoryId =
+			options.encryptionHistoryId ??
+			this.#derive.encryptionHistoryId({ uuid: options.uuid! });
+
+		const currentVersion = await this.#view.getCurrentKeyVersion({ encryptionHistoryId });
+		const result = await this.#generateDEK({
+			groupId,
+			keyVersion: currentVersion + 1n,
+		});
+		return { ...result, groupId, encryptionHistoryId };
+	}
+
+	// === Private: DEK Generation ===
+
+	/**
+	 * Generate a new DEK and Seal-encrypt it. Warms the DEK cache.
+	 */
+	async #generateDEK(options: {
 		groupId: string;
 		keyVersion?: bigint;
 		threshold?: number;

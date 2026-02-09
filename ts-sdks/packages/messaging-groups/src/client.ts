@@ -19,6 +19,7 @@ import type {
 	MessagingGroupsCompatibleClient,
 	MessagingGroupsEncryptionOptions,
 	MessagingGroupsPackageConfig,
+	RemoveMemberOptions,
 	RotateEncryptionKeyOptions,
 } from './types.js';
 import { MessagingGroupsCall } from './call.js';
@@ -39,7 +40,7 @@ import { MessagingGroupsView } from './view.js';
  * );
  *
  * // Access the messaging client
- * client.messaging.createAndShareGroup({ ... });
+ * client.messaging.createAndShareGroup({ signer });
  * ```
  */
 export function messagingGroups<const Name = 'messaging'>({
@@ -78,19 +79,24 @@ export function messagingGroups<const Name = 'messaging'>({
  *
  * @example
  * ```ts
- * // Create and share a group
+ * // Create and share a group (encryption handled internally)
  * const { digest } = await client.messaging.createAndShareGroup({
  *   signer,
- *   initialEncryptedDek: encryptedDekBytes,
  *   initialMembers: ['0x...', '0x...'],
  * });
  *
- * // Rotate encryption key
+ * // Rotate encryption key (by UUID or explicit IDs)
  * await client.messaging.rotateEncryptionKey({
  *   signer,
- *   encryptionHistoryId: '0x...',
+ *   uuid: 'my-group-uuid',
+ * });
+ *
+ * // Remove member + auto-rotate encryption key
+ * await client.messaging.removeMember({
+ *   signer,
  *   groupId: '0x...',
- *   newEncryptedDek: newDekBytes,
+ *   encryptionHistoryId: '0x...',
+ *   member: '0x...',
  * });
  *
  * // For fine-grained permissions, use the groups extension:
@@ -138,13 +144,8 @@ export class MessagingGroupsClient {
 			}
 		}
 
-		this.call = new MessagingGroupsCall({
-			packageConfig: this.#packageConfig,
-		});
+		// Build order matters: bcs → derive → view → encryption → call → tx
 		this.bcs = new MessagingGroupsBCS({ packageConfig: this.#packageConfig });
-		this.tx = new MessagingGroupsTransactions({
-			call: this.call,
-		});
 		this.derive = new MessagingGroupsDerive({ packageConfig: this.#packageConfig });
 		this.view = new MessagingGroupsView({
 			packageConfig: this.#packageConfig,
@@ -156,8 +157,17 @@ export class MessagingGroupsClient {
 			sealClient: this.#client.seal,
 			suiClient: this.#client,
 			view: this.view,
+			derive: this.derive,
 			packageId: this.#packageConfig.packageId,
 			...options.encryption,
+		});
+		this.call = new MessagingGroupsCall({
+			packageConfig: this.#packageConfig,
+			encryption: this.encryption,
+			groupsCall: this.#client.groups.call,
+		});
+		this.tx = new MessagingGroupsTransactions({
+			call: this.call,
 		});
 	}
 
@@ -222,6 +232,22 @@ export class MessagingGroupsClient {
 		const { signer, ...callOptions } = options;
 		const transaction = this.tx.rotateEncryptionKey(callOptions);
 		return this.#executeTransaction(transaction, signer, 'rotate encryption key');
+	}
+
+	/**
+	 * Removes a member and automatically rotates the encryption key.
+	 *
+	 * This ensures the removed member cannot decrypt messages sent after removal.
+	 * Messages encrypted with previous key versions remain accessible to anyone
+	 * who previously held the DEK.
+	 *
+	 * For manual control over these steps, use `client.groups.removeMember()` and
+	 * `client.messaging.call.rotateEncryptionKey()` separately.
+	 */
+	async removeMember(options: RemoveMemberOptions) {
+		const { signer, ...callOptions } = options;
+		const transaction = this.tx.removeMember(callOptions);
+		return this.#executeTransaction(transaction, signer, 'remove member');
 	}
 
 	/**

@@ -54,15 +54,13 @@ export interface MessagingGroupsClientOptions {
 
 // === Call/Tx Options (no signer) ===
 
-/** Options for creating a new messaging group */
+/** Options for creating a new messaging group. */
 export interface CreateGroupCallOptions {
-	/** Client-provided UUID for deterministic address derivation of the group and encryption history */
-	uuid: string;
 	/**
-	 * Initial Seal-encrypted DEK bytes.
-	 * Contains identity bytes format: [group_id (32 bytes)][key_version (8 bytes LE u64)]
+	 * UUID for deterministic address derivation of the group and encryption history.
+	 * Generated internally if omitted.
 	 */
-	initialEncryptedDek: Uint8Array | number[];
+	uuid?: string;
 	/**
 	 * Addresses to grant MessagingReader permission on creation.
 	 * The creator is automatically granted all permissions and should not be included.
@@ -70,15 +68,36 @@ export interface CreateGroupCallOptions {
 	initialMembers?: string[];
 }
 
-/** Options for rotating the encryption key */
-export interface RotateEncryptionKeyCallOptions {
-	/** Object ID or TransactionArgument for the EncryptionHistory */
-	encryptionHistoryId: string | TransactionArgument;
-	/** Object ID or TransactionArgument for the PermissionedGroup<Messaging> */
-	groupId: string | TransactionArgument;
-	/** New Seal-encrypted DEK bytes */
-	newEncryptedDek: Uint8Array | number[];
-}
+/**
+ * Options for rotating the encryption key.
+ * The new DEK is generated and Seal-encrypted internally.
+ *
+ * Accepts either explicit `groupId` + `encryptionHistoryId`, or a `uuid`
+ * (which derives both IDs internally).
+ */
+export type RotateEncryptionKeyCallOptions = GroupRef;
+
+/**
+ * Options for removing a member from an encrypted messaging group.
+ *
+ * This is a composite operation that:
+ * 1. Removes the member from the PermissionedGroup (revoking all permissions)
+ * 2. Automatically rotates the encryption key
+ *
+ * The key rotation ensures the removed member cannot decrypt messages sent after removal.
+ * Messages encrypted with previous key versions remain accessible to anyone who previously
+ * held the DEK (this is inherent — the removed member may have cached it locally).
+ *
+ * For manual control over these steps, use `client.groups.removeMember()` and
+ * `client.messaging.call.rotateEncryptionKey()` separately.
+ *
+ * Accepts either explicit `groupId` + `encryptionHistoryId`, or a `uuid`
+ * (which derives both IDs internally).
+ */
+export type RemoveMemberCallOptions = GroupRef & {
+	/** Address of the member to remove. */
+	member: string;
+};
 
 /** Options for granting all messaging permissions to a member */
 export interface GrantAllMessagingPermissionsCallOptions {
@@ -105,10 +124,10 @@ export interface CreateGroupOptions extends CreateGroupCallOptions {
 }
 
 /** Options for rotating encryption key (imperative) */
-export interface RotateEncryptionKeyOptions extends RotateEncryptionKeyCallOptions {
+export type RotateEncryptionKeyOptions = RotateEncryptionKeyCallOptions & {
 	/** Signer to execute the transaction */
 	signer: Signer;
-}
+};
 
 /** Options for granting all messaging permissions (imperative) */
 export interface GrantAllMessagingPermissionsOptions extends GrantAllMessagingPermissionsCallOptions {
@@ -122,7 +141,13 @@ export interface GrantAllPermissionsOptions extends GrantAllPermissionsCallOptio
 	signer: Signer;
 }
 
-// === View Options ===
+/** Options for removing a member (imperative) */
+export type RemoveMemberOptions = RemoveMemberCallOptions & {
+	/** Signer to execute the transaction */
+	signer: Signer;
+};
+
+// === Shared Reference Types ===
 
 /**
  * Reference to an EncryptionHistory — by object ID or by UUID (which derives the ID).
@@ -131,6 +156,18 @@ export interface GrantAllPermissionsOptions extends GrantAllPermissionsCallOptio
 export type EncryptionHistoryRef =
 	| { encryptionHistoryId: string; uuid?: never }
 	| { uuid: string; encryptionHistoryId?: never };
+
+/**
+ * Reference to a group + encryption history pair — by explicit IDs or by UUID.
+ *
+ * Since both the `PermissionedGroup<Messaging>` and `EncryptionHistory` are derived
+ * from the same UUID, providing a UUID derives both IDs internally.
+ */
+export type GroupRef =
+	| { groupId: string; encryptionHistoryId: string; uuid?: never }
+	| { uuid: string; groupId?: never; encryptionHistoryId?: never };
+
+// === View Options ===
 
 /** Options for getting the encrypted key at a specific version */
 export type EncryptedKeyViewOptions = EncryptionHistoryRef & {
