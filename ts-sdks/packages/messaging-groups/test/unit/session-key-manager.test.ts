@@ -3,13 +3,17 @@
 
 import { SessionKey } from '@mysten/seal';
 import type { SealCompatibleClient } from '@mysten/seal';
+import type { ClientWithCoreApi } from '@mysten/sui/client';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SessionKeyManager } from '../../src/encryption/session-key-manager.js';
 
 /** Minimal mock client for SessionKey.import() — no network calls needed. */
-const mockSuiClient = {} as SealCompatibleClient;
+const mockSealClient = {} as SealCompatibleClient;
+
+const MOCK_PACKAGE_ID = '0x' + '00'.repeat(32);
+const mockSuiClient = {} as ClientWithCoreApi;
 
 /** Create a real SessionKey via import() with the given TTL. */
 function createSessionKey(opts: { ttlMin?: number } = {}): SessionKey {
@@ -17,13 +21,25 @@ function createSessionKey(opts: { ttlMin?: number } = {}): SessionKey {
 	return SessionKey.import(
 		{
 			address: keypair.getPublicKey().toSuiAddress(),
-			packageId: '0x' + '00'.repeat(32),
+			packageId: MOCK_PACKAGE_ID,
 			creationTimeMs: Date.now(),
 			ttlMin: opts.ttlMin ?? 30,
 			sessionKey: keypair.getSecretKey(),
 		},
-		mockSuiClient,
+		mockSealClient,
 	);
+}
+
+/**
+ * Build a SessionKeyManager using Tier 3 (getSessionKey callback).
+ * This lets us control exactly which key is returned without mocking SessionKey.create().
+ */
+function createManager(getSessionKey: () => Promise<SessionKey> | SessionKey) {
+	return new SessionKeyManager({
+		sessionKeyConfig: { getSessionKey },
+		packageId: MOCK_PACKAGE_ID,
+		suiClient: mockSuiClient,
+	});
 }
 
 describe('SessionKeyManager', () => {
@@ -35,110 +51,125 @@ describe('SessionKeyManager', () => {
 		vi.useRealTimers();
 	});
 
-	it('should return current key when not expired', async () => {
+	it('should lazily create a key on first getSessionKey call', async () => {
 		const key = createSessionKey({ ttlMin: 30 });
-		const mgr = new SessionKeyManager({ sessionKey: key, refreshBufferMs: 0 });
+		let callCount = 0;
 
-		const result = await mgr.getValidSessionKey();
-		expect(result).toBe(key);
-	});
-
-	it('should report needsRefresh for expired key', () => {
-		const key = createSessionKey({ ttlMin: 1 });
-		const mgr = new SessionKeyManager({ sessionKey: key, refreshBufferMs: 0 });
-
-		// Advance past TTL
-		vi.advanceTimersByTime(2 * 60_000);
-
-		expect(mgr.needsRefresh()).toBe(true);
-	});
-
-	it('should report needsRefresh when within buffer window', () => {
-		// Key with 1 minute TTL, buffer of 2 minutes → stale immediately
-		const key = createSessionKey({ ttlMin: 1 });
-		const mgr = new SessionKeyManager({ sessionKey: key, refreshBufferMs: 120_000 });
-
-		expect(mgr.needsRefresh()).toBe(true);
-	});
-
-	it('should not need refresh when outside buffer window', () => {
-		// Key with 30 minute TTL, buffer of 1 minute → still fresh
-		const key = createSessionKey({ ttlMin: 30 });
-		const mgr = new SessionKeyManager({ sessionKey: key, refreshBufferMs: 60_000 });
-
-		expect(mgr.needsRefresh()).toBe(false);
-	});
-
-	it('should throw if key expired and no onRefresh callback', async () => {
-		const key = createSessionKey({ ttlMin: 1 });
-		const mgr = new SessionKeyManager({ sessionKey: key, refreshBufferMs: 0 });
-
-		// Advance past TTL
-		vi.advanceTimersByTime(2 * 60_000);
-
-		await expect(mgr.getValidSessionKey()).rejects.toThrow('Session key expired');
-	});
-
-	it('should call onRefresh and update key', async () => {
-		const oldKey = createSessionKey({ ttlMin: 1 });
-		const newKey = createSessionKey({ ttlMin: 30 });
-
-		const mgr = new SessionKeyManager({
-			sessionKey: oldKey,
-			onRefresh: async () => newKey,
-			refreshBufferMs: 0,
+		const mgr = createManager(async () => {
+			callCount++;
+			return key;
 		});
 
-		// Advance past TTL of old key
-		vi.advanceTimersByTime(2 * 60_000);
-
-		const result = await mgr.getValidSessionKey();
-		expect(result).toBe(newKey);
-		expect(mgr.sessionKey).toBe(newKey);
+		const result = await mgr.getSessionKey();
+		expect(result).toBe(key);
+		expect(callCount).toBe(1);
 	});
 
-	it('should coalesce concurrent refresh calls', async () => {
+	it('should return cached key when not expired', async () => {
+		const key = createSessionKey({ ttlMin: 30 });
+		let callCount = 0;
+
+		const mgr = createManager(async () => {
+			callCount++;
+			return key;
+		});
+
+		await mgr.getSessionKey();
+		const result = await mgr.getSessionKey();
+
+		expect(result).toBe(key);
+		expect(callCount).toBe(1); // Only created once
+	});
+
+	it('should refresh when key expires', async () => {
 		const oldKey = createSessionKey({ ttlMin: 1 });
 		const newKey = createSessionKey({ ttlMin: 30 });
 
 		let callCount = 0;
-		const mgr = new SessionKeyManager({
-			sessionKey: oldKey,
-			onRefresh: async () => {
-				callCount++;
-				return newKey;
-			},
-			refreshBufferMs: 0,
+		const mgr = createManager(async () => {
+			callCount++;
+			return callCount === 1 ? oldKey : newKey;
 		});
 
-		// Advance past TTL of old key
+		// First call creates oldKey
+		const first = await mgr.getSessionKey();
+		expect(first).toBe(oldKey);
+
+		// Advance past TTL
 		vi.advanceTimersByTime(2 * 60_000);
 
+		// Second call refreshes to newKey
+		const second = await mgr.getSessionKey();
+		expect(second).toBe(newKey);
+		expect(callCount).toBe(2);
+	});
+
+	it('should refresh when within buffer window', async () => {
+		// 1-minute TTL with default 60s buffer → stale immediately after first use
+		const key1 = createSessionKey({ ttlMin: 1 });
+		const key2 = createSessionKey({ ttlMin: 30 });
+
+		let callCount = 0;
+		const mgr = createManager(async () => {
+			callCount++;
+			return callCount === 1 ? key1 : key2;
+		});
+
+		// First call: creates key1 (lazy, no cached key yet)
+		await mgr.getSessionKey();
+
+		// Second call: key1 is within buffer → refreshes
+		const result = await mgr.getSessionKey();
+		expect(result).toBe(key2);
+		expect(callCount).toBe(2);
+	});
+
+	it('should coalesce concurrent refresh calls', async () => {
+		const key = createSessionKey({ ttlMin: 30 });
+		let callCount = 0;
+
+		const mgr = createManager(async () => {
+			callCount++;
+			return key;
+		});
+
+		// All three call simultaneously — only one getSessionKey invocation
 		const [r1, r2, r3] = await Promise.all([
-			mgr.getValidSessionKey(),
-			mgr.getValidSessionKey(),
-			mgr.getValidSessionKey(),
+			mgr.getSessionKey(),
+			mgr.getSessionKey(),
+			mgr.getSessionKey(),
 		]);
 
 		expect(callCount).toBe(1);
-		expect(r1).toBe(newKey);
-		expect(r2).toBe(newKey);
-		expect(r3).toBe(newKey);
+		expect(r1).toBe(key);
+		expect(r2).toBe(key);
+		expect(r3).toBe(key);
 	});
 
-	it('should allow manual key replacement via setSessionKey', () => {
-		const oldKey = createSessionKey({ ttlMin: 1 });
-		const mgr = new SessionKeyManager({ sessionKey: oldKey, refreshBufferMs: 0 });
+	it('should use default refreshBufferMs of 60_000', async () => {
+		// Key with 2 minute TTL, default buffer is 1 minute
+		const key1 = createSessionKey({ ttlMin: 2 });
+		const key2 = createSessionKey({ ttlMin: 30 });
 
-		// Expire the old key
-		vi.advanceTimersByTime(2 * 60_000);
-		expect(mgr.needsRefresh()).toBe(true);
+		let callCount = 0;
+		const mgr = createManager(async () => {
+			callCount++;
+			return callCount === 1 ? key1 : key2;
+		});
 
-		// Replace with fresh key
-		const newKey = createSessionKey({ ttlMin: 30 });
-		mgr.setSessionKey(newKey);
+		// First call creates key1
+		await mgr.getSessionKey();
 
-		expect(mgr.sessionKey).toBe(newKey);
-		expect(mgr.needsRefresh()).toBe(false);
+		// Advance 50 seconds — outside the 1-minute buffer for a 2-minute key (still has 70s left)
+		vi.advanceTimersByTime(50_000);
+		const stillFresh = await mgr.getSessionKey();
+		expect(stillFresh).toBe(key1);
+		expect(callCount).toBe(1);
+
+		// Advance another 20 seconds (total 70s) — now within 1-minute buffer (50s remaining)
+		vi.advanceTimersByTime(20_000);
+		const refreshed = await mgr.getSessionKey();
+		expect(refreshed).toBe(key2);
+		expect(callCount).toBe(2);
 	});
 });

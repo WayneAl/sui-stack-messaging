@@ -7,10 +7,10 @@ export type {
 	SealIdentity,
 	GeneratedDEK,
 	DEKManagerConfig,
-	SessionKeyManagerConfig,
-	RefreshSessionKeyCallback,
 	EnvelopeEncryptionConfig,
 	EncryptedEnvelope,
+	EncryptOptions,
+	DecryptOptions,
 	SealApproveBuilder,
 } from './types.js';
 
@@ -21,9 +21,6 @@ export { WebCryptoPrimitives, getDefaultCryptoPrimitives } from './crypto-primit
 
 // DEK Manager
 export { DEKManager, encodeIdentity, decodeIdentity } from './dek-manager.js';
-
-// Session Key Manager
-export { SessionKeyManager } from './session-key-manager.js';
 
 // Envelope Encryption
 export { EnvelopeEncryption } from './envelope-encryption.js';

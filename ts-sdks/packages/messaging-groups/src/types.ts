@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { PermissionedGroupsClient } from '@mysten/permissioned-groups';
-import type { SealClient } from '@mysten/seal';
+import type { SealClient, SessionKey } from '@mysten/seal';
 import type { Signer } from '@mysten/sui/cryptography';
 import type { ClientWithCoreApi } from '@mysten/sui/client';
 import type { TransactionArgument } from '@mysten/sui/transactions';
@@ -33,12 +33,46 @@ export interface MessagingGroupsCompatibleClient extends ClientWithCoreApi {
 	seal: SealClient;
 }
 
+// === Session Key Configuration ===
+
+/** Shared options for SDK-managed session key creation (Tier 1 & 2). */
+interface SessionKeySharedOptions {
+	/** Session key TTL in minutes (default: 10). */
+	ttlMin?: number;
+	/** MVR name for Seal (optional). */
+	mvrName?: string;
+	/** Refresh session key this many ms before expiry (default: 60_000). */
+	refreshBufferMs?: number;
+}
+
+/**
+ * How the SDK obtains Seal session keys. Required at client creation.
+ *
+ * **Tier 1 — Signer-based** (dapp-kit-next `CurrentAccountSigner`, `Keypair`, Enoki):
+ * SDK derives address via `signer.toSuiAddress()`, passes signer to
+ * `SessionKey.create()`, and calls `getCertificate()`. Fully automatic.
+ *
+ * **Tier 2 — Callback-based** (current dapp-kit without Signer abstraction):
+ * Consumer provides address + signing callback. SDK calls `SessionKey.create()`
+ * without signer, then `getPersonalMessage()` → `onSign()` → `setPersonalMessageSignature()`.
+ *
+ * **Tier 3 — Full manual control** (power users, custom persistence, exotic flows):
+ * Consumer manages the entire `SessionKey` lifecycle. SDK calls `getSessionKey()`
+ * whenever it needs a key.
+ */
+export type SessionKeyConfig =
+	| ({ signer: Signer } & SessionKeySharedOptions)
+	| ({ address: string; onSign: (message: Uint8Array) => Promise<string> } & SessionKeySharedOptions)
+	| { getSessionKey: () => Promise<SessionKey> | SessionKey };
+
 /** Encryption-specific options for the messaging groups client. */
 export interface MessagingGroupsEncryptionOptions {
+	/** How session keys are obtained. Required. */
+	sessionKey: SessionKeyConfig;
 	/** Custom crypto primitives (default: Web Crypto). */
 	cryptoPrimitives?: CryptoPrimitives;
-	/** Default Seal threshold (default: 2). */
-	defaultThreshold?: number;
+	/** Seal threshold for DEK encryption (default: 2). */
+	sealThreshold?: number;
 }
 
 export interface MessagingGroupsClientOptions {
@@ -48,8 +82,8 @@ export interface MessagingGroupsClientOptions {
 	 * When not provided, the config is auto-detected from the client's network.
 	 */
 	packageConfig?: MessagingGroupsPackageConfig;
-	/** Encryption configuration. */
-	encryption?: MessagingGroupsEncryptionOptions;
+	/** Encryption configuration (required — session key config must be set at creation). */
+	encryption: MessagingGroupsEncryptionOptions;
 }
 
 // === Call/Tx Options (no signer) ===

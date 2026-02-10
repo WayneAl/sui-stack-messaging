@@ -5,12 +5,13 @@ import { describe, it, expect, inject } from 'vitest';
 import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { fromHex } from '@mysten/sui/utils';
-import { EncryptedObject } from '@mysten/seal';
+import { EncryptedObject, SessionKey } from '@mysten/seal';
+import type { SealCompatibleClient } from '@mysten/seal';
 import { permissionedGroups } from '@mysten/permissioned-groups';
 import { messagingGroups, decodeIdentity } from '@mysten/messaging-groups';
 
 import { createMockSealClient } from '../../src/seal-mock/index.js';
-import { ClientWithCoreApi } from '@mysten/sui/client';
+import type { ClientWithCoreApi } from '@mysten/sui/client';
 
 /**
  * Creates a test client with PermissionedGroups, mock Seal, and MessagingGroups extensions.
@@ -20,9 +21,13 @@ function createTestClient(options: {
 	permissionedGroupsPackageId: string;
 	messagingPackageId: string;
 	namespaceId: string;
+	keypair?: Ed25519Keypair;
 }) {
 	const { suiClientUrl, permissionedGroupsPackageId, messagingPackageId, namespaceId } = options;
 	const witnessType = `${messagingPackageId}::messaging::Messaging`;
+
+	// Use provided keypair or generate a throwaway one (for tests that don't encrypt)
+	const kp = options.keypair ?? new Ed25519Keypair();
 
 	const suiClient = new SuiJsonRpcClient({
 		url: suiClientUrl,
@@ -54,6 +59,21 @@ function createTestClient(options: {
 				packageConfig: {
 					packageId: messagingPackageId,
 					namespaceId,
+				},
+				encryption: {
+					sessionKey: {
+						getSessionKey: () =>
+							SessionKey.import(
+								{
+									address: kp.getPublicKey().toSuiAddress(),
+									packageId: messagingPackageId,
+									creationTimeMs: Date.now(),
+									ttlMin: 30,
+									sessionKey: kp.getSecretKey(),
+								},
+								{} as SealCompatibleClient,
+							),
+					},
 				},
 			}),
 		);

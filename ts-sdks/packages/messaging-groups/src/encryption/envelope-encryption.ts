@@ -8,11 +8,12 @@ import { Transaction, type TransactionResult } from '@mysten/sui/transactions';
 import { fromHex } from '@mysten/sui/utils';
 
 import type { MessagingGroupsDerive } from '../derive.js';
-import type { GroupRef } from '../types.js';
+import type { GroupRef, MessagingGroupsEncryptionOptions } from '../types.js';
 import type { MessagingGroupsView } from '../view.js';
 import type { CryptoPrimitives } from './crypto-primitives.js';
 import { getDefaultCryptoPrimitives } from './crypto-primitives.js';
 import { DEKManager, NONCE_LENGTH, type GeneratedDEK } from './dek-manager.js';
+import { SessionKeyManager } from './session-key-manager.js';
 
 /** The result of encrypting data with envelope encryption. */
 export interface EncryptedEnvelope {
@@ -49,7 +50,22 @@ export type SealApproveBuilder = (
 	identityBytes: Uint8Array,
 ) => (tx: Transaction) => TransactionResult;
 
-/** Common options for encrypt/decrypt that identify the group's DEK. */
+/** Options for encrypt(). */
+export type EncryptOptions = GroupRef & {
+	data: Uint8Array;
+	/** Key version to use. Default: latest from chain. */
+	keyVersion?: bigint;
+	aad?: Uint8Array;
+	sealApproveBuilder?: SealApproveBuilder;
+};
+
+/** Options for decrypt(). */
+export type DecryptOptions = GroupRef & {
+	envelope: EncryptedEnvelope;
+	sealApproveBuilder?: SealApproveBuilder;
+};
+
+/** Internal options for DEK resolution (after GroupRef is resolved). */
 interface DEKResolutionOptions {
 	groupId: string;
 	encryptionHistoryId: string;
@@ -69,10 +85,8 @@ export interface EnvelopeEncryptionConfig {
 	derive: MessagingGroupsDerive;
 	/** Move package ID for the messaging module. */
 	packageId: string;
-	/** Pluggable crypto primitives (default: Web Crypto). */
-	cryptoPrimitives?: CryptoPrimitives;
-	/** Default Seal threshold (default: 2). */
-	defaultThreshold?: number;
+	/** Encryption options (session key config, crypto, threshold). */
+	encryption: MessagingGroupsEncryptionOptions;
 }
 
 /**
@@ -82,6 +96,9 @@ export interface EnvelopeEncryptionConfig {
  * - **Encrypt:** resolve DEK (fetch + Seal-decrypt, with cache) → AES-GCM encrypt data
  * - **Decrypt:** resolve DEK (from cache or fetch + Seal-decrypt) → AES-GCM decrypt data
  * - **Generate DEK:** for group creation / key rotation (separate from encrypt/decrypt)
+ *
+ * Session keys are managed internally via {@link SessionKeyManager} — consumers
+ * never pass session keys to individual operations.
  *
  * Decrypted DEKs are cached via {@link ClientCache} (scoped under `dek`)
  * so repeated operations for the same group/version don't re-invoke Seal.
@@ -94,19 +111,25 @@ export class EnvelopeEncryption {
 	readonly #view: MessagingGroupsView;
 	readonly #derive: MessagingGroupsDerive;
 	readonly #dekCache: ClientCache;
+	readonly #sessionKeyManager: SessionKeyManager;
 
 	constructor(config: EnvelopeEncryptionConfig) {
 		this.#suiClient = config.suiClient;
 		this.#view = config.view;
 		this.#derive = config.derive;
 		this.#packageId = config.packageId;
-		this.#crypto = config.cryptoPrimitives ?? getDefaultCryptoPrimitives();
+		this.#crypto = config.encryption.cryptoPrimitives ?? getDefaultCryptoPrimitives();
 		this.#dekCache = config.suiClient.cache.scope('dek');
 		this.#dekManager = new DEKManager({
 			sealClient: config.sealClient,
 			packageId: config.packageId,
-			cryptoPrimitives: config.cryptoPrimitives,
-			defaultThreshold: config.defaultThreshold,
+			cryptoPrimitives: config.encryption.cryptoPrimitives,
+			defaultThreshold: config.encryption.sealThreshold,
+		});
+		this.#sessionKeyManager = new SessionKeyManager({
+			sessionKeyConfig: config.encryption.sessionKey,
+			packageId: config.packageId,
+			suiClient: config.suiClient,
 		});
 	}
 
@@ -140,10 +163,7 @@ export class EnvelopeEncryption {
 	async generateRotationDEK(
 		options: GroupRef,
 	): Promise<GeneratedDEK & { groupId: string; encryptionHistoryId: string }> {
-		const groupId = options.groupId ?? this.#derive.groupId({ uuid: options.uuid! });
-		const encryptionHistoryId =
-			options.encryptionHistoryId ??
-			this.#derive.encryptionHistoryId({ uuid: options.uuid! });
+		const { groupId, encryptionHistoryId } = this.#resolveGroupRef(options);
 
 		const currentVersion = await this.#view.getCurrentKeyVersion({ encryptionHistoryId });
 		const result = await this.#generateDEK({
@@ -151,6 +171,91 @@ export class EnvelopeEncryption {
 			keyVersion: currentVersion + 1n,
 		});
 		return { ...result, groupId, encryptionHistoryId };
+	}
+
+	/**
+	 * Encrypt data for a group.
+	 *
+	 * Resolves the group's DEK (fetching from EncryptionHistory and
+	 * Seal-decrypting if not cached) and AES-GCM encrypts the data.
+	 *
+	 * Session key is resolved internally — never needs to be passed.
+	 * Key version defaults to the latest from chain if not specified.
+	 */
+	async encrypt(options: EncryptOptions): Promise<EncryptedEnvelope> {
+		const { groupId, encryptionHistoryId } = this.#resolveGroupRef(options);
+		const sessionKey = await this.#sessionKeyManager.getSessionKey();
+
+		const keyVersion =
+			options.keyVersion ?? (await this.#view.getCurrentKeyVersion({ encryptionHistoryId }));
+
+		const dek = await this.#resolveDEK({
+			groupId,
+			encryptionHistoryId,
+			keyVersion,
+			sessionKey,
+			sealApproveBuilder: options.sealApproveBuilder,
+		});
+
+		const nonce = this.#crypto.generateRandomBytes(NONCE_LENGTH);
+		const ciphertext = await this.#crypto.aesGcmEncrypt(dek, options.data, nonce, options.aad);
+
+		return {
+			ciphertext,
+			nonce,
+			keyVersion,
+			aad: options.aad,
+		};
+	}
+
+	/**
+	 * Decrypt data for a group.
+	 *
+	 * Resolves the group's DEK (from cache or fetch + Seal-decrypt)
+	 * and AES-GCM decrypts the envelope.
+	 *
+	 * Session key is resolved internally. Key version comes from the envelope.
+	 */
+	async decrypt(options: DecryptOptions): Promise<Uint8Array> {
+		const { groupId, encryptionHistoryId } = this.#resolveGroupRef(options);
+		const sessionKey = await this.#sessionKeyManager.getSessionKey();
+
+		const dek = await this.#resolveDEK({
+			groupId,
+			encryptionHistoryId,
+			keyVersion: options.envelope.keyVersion,
+			sessionKey,
+			sealApproveBuilder: options.sealApproveBuilder,
+		});
+
+		return this.#crypto.aesGcmDecrypt(
+			dek,
+			options.envelope.ciphertext,
+			options.envelope.nonce,
+			options.envelope.aad,
+		);
+	}
+
+	// === Cache Management ===
+
+	/** Clear cached DEKs — all, or only those for a specific group. */
+	clearCache(groupId?: string): void {
+		this.#dekCache.clear(groupId ? [groupId] : undefined);
+	}
+
+	// === Private: GroupRef Resolution ===
+
+	#resolveGroupRef(ref: GroupRef): { groupId: string; encryptionHistoryId: string } {
+		if ('uuid' in ref && ref.uuid) {
+			return {
+				groupId: this.#derive.groupId({ uuid: ref.uuid }),
+				encryptionHistoryId: this.#derive.encryptionHistoryId({ uuid: ref.uuid }),
+			};
+		}
+		return {
+			groupId: ref.groupId!,
+			encryptionHistoryId: ref.encryptionHistoryId!,
+		};
 	}
 
 	// === Private: DEK Generation ===
@@ -169,67 +274,6 @@ export class EnvelopeEncryption {
 		this.#putDEK(options.groupId, result.identity.keyVersion, result.dek);
 
 		return result;
-	}
-
-	/**
-	 * Encrypt data for a group.
-	 *
-	 * Resolves the group's DEK (fetching from EncryptionHistory and
-	 * Seal-decrypting if not cached) and AES-GCM encrypts the data.
-	 */
-	async encrypt(
-		options: DEKResolutionOptions & {
-			data: Uint8Array;
-			aad?: Uint8Array;
-		},
-	): Promise<EncryptedEnvelope> {
-		const dek = await this.#resolveDEK(options);
-
-		const nonce = this.#crypto.generateRandomBytes(NONCE_LENGTH);
-		const ciphertext = await this.#crypto.aesGcmEncrypt(
-			dek,
-			options.data,
-			nonce,
-			options.aad,
-		);
-
-		return {
-			ciphertext,
-			nonce,
-			keyVersion: options.keyVersion,
-			aad: options.aad,
-		};
-	}
-
-	/**
-	 * Decrypt data for a group.
-	 *
-	 * Resolves the group's DEK (from cache or fetch + Seal-decrypt)
-	 * and AES-GCM decrypts the envelope.
-	 */
-	async decrypt(
-		options: DEKResolutionOptions & {
-			envelope: EncryptedEnvelope;
-		},
-	): Promise<Uint8Array> {
-		const dek = await this.#resolveDEK({
-			...options,
-			keyVersion: options.envelope.keyVersion,
-		});
-
-		return this.#crypto.aesGcmDecrypt(
-			dek,
-			options.envelope.ciphertext,
-			options.envelope.nonce,
-			options.envelope.aad,
-		);
-	}
-
-	// === Cache Management ===
-
-	/** Clear cached DEKs — all, or only those for a specific group. */
-	clearCache(groupId?: string): void {
-		this.#dekCache.clear(groupId ? [groupId] : undefined);
 	}
 
 	// === Private: DEK Resolution ===

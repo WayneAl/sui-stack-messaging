@@ -2,101 +2,110 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { SessionKey } from '@mysten/seal';
+import { SessionKey as SessionKeyClass } from '@mysten/seal';
+import type { ClientWithCoreApi } from '@mysten/sui/client';
 
-/**
- * Callback invoked when the current session key is expired or near expiration.
- * The consumer is responsible for creating a fresh `SessionKey` (via
- * `SessionKey.create()`, wallet signing, storage import, etc.).
- */
-export type RefreshSessionKeyCallback = () => Promise<SessionKey>;
+import type { SessionKeyConfig } from '../types.js';
 
 export interface SessionKeyManagerConfig {
-	/** The initial session key instance. */
-	sessionKey: SessionKey;
-	/**
-	 * Called when a refresh is needed.
-	 * If omitted, {@link getValidSessionKey} throws when the key expires.
-	 */
-	onRefresh?: RefreshSessionKeyCallback;
-	/**
-	 * How many milliseconds *before* actual expiration to consider the key
-	 * stale and trigger a refresh. Defaults to 60 000 (1 minute).
-	 */
-	refreshBufferMs?: number;
+	/** Configuration for how session keys are obtained (tier 1/2/3). */
+	sessionKeyConfig: SessionKeyConfig;
+	/** Move package ID — needed for Tier 1/2 to call SessionKey.create(). */
+	packageId: string;
+	/** Sui client — needed for Tier 1/2 to call SessionKey.create(). */
+	suiClient: ClientWithCoreApi;
 }
 
 /**
- * Manages the lifecycle of a Seal {@link SessionKey}.
+ * Owns the complete session key lifecycle: creation, signing ceremony,
+ * caching, expiry checks, and concurrent-call coalescing.
  *
- * - Exposes the current key directly via {@link sessionKey}.
- * - Checks expiry (with configurable buffer) and delegates refresh to the
- *   consumer-supplied callback.
- * - Coalesces concurrent refresh calls so only one runs at a time.
+ * Accepts a {@link SessionKeyConfig} and handles all three tiers internally.
+ * Consumers call {@link getSessionKey} and never think about tiers.
  */
 export class SessionKeyManager {
-	/** The current session key — directly accessible, no wrapper. */
-	sessionKey: SessionKey;
-
-	readonly #onRefresh?: RefreshSessionKeyCallback;
+	readonly #config: SessionKeyManagerConfig;
 	readonly #refreshBufferMs: number;
 
+	#sessionKey: SessionKey | null = null;
 	#refreshPromise: Promise<SessionKey> | null = null;
 
 	constructor(config: SessionKeyManagerConfig) {
-		this.sessionKey = config.sessionKey;
-		this.#onRefresh = config.onRefresh;
-		this.#refreshBufferMs = config.refreshBufferMs ?? 60_000;
+		this.#config = config;
+		this.#refreshBufferMs = this.#resolveRefreshBuffer();
 	}
 
-	/** Replace the current session key (e.g. after importing from storage). */
-	setSessionKey(sessionKey: SessionKey): void {
-		this.sessionKey = sessionKey;
+	/** Returns a valid, non-expired session key — creating or refreshing as needed. */
+	async getSessionKey(): Promise<SessionKey> {
+		if (this.#sessionKey && !this.#needsRefresh()) {
+			return this.#sessionKey;
+		}
+
+		// Coalesce concurrent callers into a single creation
+		if (this.#refreshPromise) return this.#refreshPromise;
+
+		this.#refreshPromise = this.#create();
+		try {
+			this.#sessionKey = await this.#refreshPromise;
+			return this.#sessionKey;
+		} finally {
+			this.#refreshPromise = null;
+		}
 	}
 
-	/**
-	 * Whether the current key is expired or will expire within the
-	 * configured buffer window.
-	 */
-	needsRefresh(): boolean {
-		if (this.sessionKey.isExpired()) return true;
+	// ── Private ─────────────────────────────────────────────────────────
 
-		const exported = this.sessionKey.export();
+	#resolveRefreshBuffer(): number {
+		const skConfig = this.#config.sessionKeyConfig;
+		if ('refreshBufferMs' in skConfig && skConfig.refreshBufferMs !== undefined) {
+			return skConfig.refreshBufferMs;
+		}
+		return 60_000;
+	}
+
+	#needsRefresh(): boolean {
+		if (!this.#sessionKey) return true;
+		if (this.#sessionKey.isExpired()) return true;
+
+		const exported = this.#sessionKey.export();
 		const expiresAt = exported.creationTimeMs + exported.ttlMin * 60_000;
 		return Date.now() + this.#refreshBufferMs >= expiresAt;
 	}
 
-	/**
-	 * Return a valid session key, refreshing first if necessary.
-	 *
-	 * If no `onRefresh` callback was provided and the key needs refreshing,
-	 * this throws an error — the consumer must replace the key manually via
-	 * {@link setSessionKey}.
-	 *
-	 * Concurrent calls are coalesced: only one refresh runs at a time.
-	 */
-	async getValidSessionKey(): Promise<SessionKey> {
-		if (!this.needsRefresh()) {
-			return this.sessionKey;
+	async #create(): Promise<SessionKey> {
+		const skConfig = this.#config.sessionKeyConfig;
+
+		// Tier 3: consumer manages everything
+		if ('getSessionKey' in skConfig) {
+			const result = skConfig.getSessionKey();
+			return result instanceof Promise ? await result : result;
 		}
 
-		if (!this.#onRefresh) {
-			throw new Error(
-				'Session key expired and no onRefresh callback provided. ' +
-					'Call setSessionKey() with a fresh key or provide onRefresh in config.',
-			);
+		// Tier 1: Signer-based — fully automatic
+		if ('signer' in skConfig) {
+			const sessionKey = await SessionKeyClass.create({
+				address: skConfig.signer.toSuiAddress(),
+				packageId: this.#config.packageId,
+				mvrName: skConfig.mvrName,
+				ttlMin: skConfig.ttlMin ?? 10,
+				signer: skConfig.signer,
+				suiClient: this.#config.suiClient,
+			});
+			await sessionKey.getCertificate();
+			return sessionKey;
 		}
 
-		// Coalesce concurrent refresh requests.
-		if (this.#refreshPromise) {
-			return this.#refreshPromise;
-		}
-
-		this.#refreshPromise = this.#onRefresh();
-		try {
-			this.sessionKey = await this.#refreshPromise;
-			return this.sessionKey;
-		} finally {
-			this.#refreshPromise = null;
-		}
+		// Tier 2: Callback-based — SDK creates, consumer signs
+		const sessionKey = await SessionKeyClass.create({
+			address: skConfig.address,
+			packageId: this.#config.packageId,
+			mvrName: skConfig.mvrName,
+			ttlMin: skConfig.ttlMin ?? 10,
+			suiClient: this.#config.suiClient,
+		});
+		const message = sessionKey.getPersonalMessage();
+		const signature = await skConfig.onSign(message);
+		await sessionKey.setPersonalMessageSignature(signature);
+		return sessionKey;
 	}
 }

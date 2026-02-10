@@ -25,7 +25,7 @@ interface TestClientConfig {
 	namespaceId: string;
 }
 
-function createTestClient(config: TestClientConfig) {
+function createTestClient(config: TestClientConfig, keypair: Ed25519Keypair) {
 	const { suiClientUrl, permissionedGroupsPackageId, messagingPackageId, namespaceId } = config;
 	const witnessType = `${messagingPackageId}::messaging::Messaging`;
 
@@ -60,21 +60,23 @@ function createTestClient(config: TestClientConfig) {
 					packageId: messagingPackageId,
 					namespaceId,
 				},
+				encryption: {
+					sessionKey: {
+						getSessionKey: () =>
+							SessionKey.import(
+								{
+									address: keypair.getPublicKey().toSuiAddress(),
+									packageId: messagingPackageId,
+									creationTimeMs: Date.now(),
+									ttlMin: 30,
+									sessionKey: keypair.getSecretKey(),
+								},
+								{} as SealCompatibleClient,
+							),
+					},
+				},
 			}),
 		);
-}
-
-function createSessionKey(keypair: Ed25519Keypair, packageId: string): SessionKey {
-	return SessionKey.import(
-		{
-			address: keypair.getPublicKey().toSuiAddress(),
-			packageId,
-			creationTimeMs: Date.now(),
-			ttlMin: 30,
-			sessionKey: keypair.getSecretKey(),
-		},
-		{} as SealCompatibleClient,
-	);
 }
 
 async function fundNewKeypair(faucetUrl: string): Promise<Ed25519Keypair> {
@@ -113,7 +115,7 @@ describe('e2ee', () => {
 			namespaceId: namespaceId!,
 		};
 
-		adminClient = createTestClient(clientConfig);
+		adminClient = createTestClient(clientConfig, adminKeypair);
 	});
 
 	// ── Test 1: Group creation stores a valid EncryptedObject on-chain ────
@@ -157,37 +159,27 @@ describe('e2ee', () => {
 		const encryptionHistoryId = adminClient.messaging.derive.encryptionHistoryId({ uuid });
 
 		// Creator (admin) should succeed — they get all permissions on creation
-		const adminSessionKey = createSessionKey(adminKeypair, messagingPackageId);
-
 		const adminDek = await adminClient.messaging.encryption.decrypt({
 			groupId,
 			encryptionHistoryId,
-			keyVersion: 0n,
-			sessionKey: adminSessionKey,
-			envelope: {
-				// Encrypt a test payload to decrypt
-				...(await adminClient.messaging.encryption.encrypt({
-					groupId,
-					encryptionHistoryId,
-					keyVersion: 0n,
-					sessionKey: adminSessionKey,
-					data: new TextEncoder().encode('test'),
-				})),
-			},
+			envelope: await adminClient.messaging.encryption.encrypt({
+				groupId,
+				encryptionHistoryId,
+				keyVersion: 0n,
+				data: new TextEncoder().encode('test'),
+			}),
 		});
 		expect(adminDek).toEqual(new TextEncoder().encode('test'));
 
 		// Non-member uses their own client (cold cache, must go through seal_approve)
 		const outsiderKeypair = await fundNewKeypair(faucetUrl);
-		const outsiderClient = createTestClient(clientConfig);
-		const outsiderSessionKey = createSessionKey(outsiderKeypair, messagingPackageId);
+		const outsiderClient = createTestClient(clientConfig, outsiderKeypair);
 
 		await expect(
 			outsiderClient.messaging.encryption.encrypt({
 				groupId,
 				encryptionHistoryId,
 				keyVersion: 0n,
-				sessionKey: outsiderSessionKey,
 				data: new TextEncoder().encode('should fail'),
 			}),
 		).rejects.toThrow(/seal_approve/);
@@ -209,8 +201,7 @@ describe('e2ee', () => {
 		// Fund a new member — they use their own client
 		const memberKeypair = await fundNewKeypair(faucetUrl);
 		const memberAddress = memberKeypair.getPublicKey().toSuiAddress();
-		const memberClient = createTestClient(clientConfig);
-		const memberSessionKey = createSessionKey(memberKeypair, messagingPackageId);
+		const memberClient = createTestClient(clientConfig, memberKeypair);
 
 		// Before granting: member's own client has cold cache → goes through seal_approve → denied
 		await expect(
@@ -218,7 +209,6 @@ describe('e2ee', () => {
 				groupId,
 				encryptionHistoryId,
 				keyVersion: 0n,
-				sessionKey: memberSessionKey,
 				data: new TextEncoder().encode('before grant'),
 			}),
 		).rejects.toThrow(/seal_approve/);
@@ -231,12 +221,10 @@ describe('e2ee', () => {
 		});
 
 		// After granting: admin encrypts a message
-		const adminSessionKey = createSessionKey(adminKeypair, messagingPackageId);
 		const envelope = await adminClient.messaging.encryption.encrypt({
 			groupId,
 			encryptionHistoryId,
 			keyVersion: 0n,
-			sessionKey: adminSessionKey,
 			data: new TextEncoder().encode('hello member'),
 		});
 
@@ -244,8 +232,6 @@ describe('e2ee', () => {
 		const plaintext = await memberClient.messaging.encryption.decrypt({
 			groupId,
 			encryptionHistoryId,
-			keyVersion: 0n,
-			sessionKey: memberSessionKey,
 			envelope,
 		});
 		expect(new TextDecoder().decode(plaintext)).toBe('hello member');
@@ -263,7 +249,6 @@ describe('e2ee', () => {
 
 		const groupId = adminClient.messaging.derive.groupId({ uuid });
 		const encryptionHistoryId = adminClient.messaging.derive.encryptionHistoryId({ uuid });
-		const sessionKey = createSessionKey(adminKeypair, messagingPackageId);
 
 		const message = 'End-to-end encryption works.';
 		const data = new TextEncoder().encode(message);
@@ -272,7 +257,6 @@ describe('e2ee', () => {
 			groupId,
 			encryptionHistoryId,
 			keyVersion: 0n,
-			sessionKey,
 			data,
 		});
 
@@ -286,8 +270,6 @@ describe('e2ee', () => {
 		const decrypted = await adminClient.messaging.encryption.decrypt({
 			groupId,
 			encryptionHistoryId,
-			keyVersion: 0n,
-			sessionKey,
 			envelope,
 		});
 
@@ -306,7 +288,6 @@ describe('e2ee', () => {
 
 		const groupId = adminClient.messaging.derive.groupId({ uuid });
 		const encryptionHistoryId = adminClient.messaging.derive.encryptionHistoryId({ uuid });
-		const sessionKey = createSessionKey(adminKeypair, messagingPackageId);
 
 		// Encrypt with v0
 		const v0Message = 'version zero';
@@ -314,7 +295,6 @@ describe('e2ee', () => {
 			groupId,
 			encryptionHistoryId,
 			keyVersion: 0n,
-			sessionKey,
 			data: new TextEncoder().encode(v0Message),
 		});
 		expect(v0Envelope.keyVersion).toBe(0n);
@@ -335,17 +315,14 @@ describe('e2ee', () => {
 			groupId,
 			encryptionHistoryId,
 			keyVersion: 1n,
-			sessionKey,
 			data: new TextEncoder().encode(v1Message),
 		});
 		expect(v1Envelope.keyVersion).toBe(1n);
 
-		// Decrypt both versions
+		// Decrypt both versions — keyVersion comes from the envelope automatically
 		const v0Decrypted = await adminClient.messaging.encryption.decrypt({
 			groupId,
 			encryptionHistoryId,
-			keyVersion: 0n,
-			sessionKey,
 			envelope: v0Envelope,
 		});
 		expect(new TextDecoder().decode(v0Decrypted)).toBe(v0Message);
@@ -353,8 +330,6 @@ describe('e2ee', () => {
 		const v1Decrypted = await adminClient.messaging.encryption.decrypt({
 			groupId,
 			encryptionHistoryId,
-			keyVersion: 1n,
-			sessionKey,
 			envelope: v1Envelope,
 		});
 		expect(new TextDecoder().decode(v1Decrypted)).toBe(v1Message);
@@ -387,7 +362,7 @@ describe('e2ee', () => {
 		// Add a member — they use their own client
 		const memberKeypair = await fundNewKeypair(faucetUrl);
 		const memberAddress = memberKeypair.getPublicKey().toSuiAddress();
-		const memberClient = createTestClient(clientConfig);
+		const memberClient = createTestClient(clientConfig, memberKeypair);
 
 		await adminClient.messaging.grantAllMessagingPermissions({
 			signer: adminKeypair,
@@ -396,12 +371,10 @@ describe('e2ee', () => {
 		});
 
 		// Verify member can access v0 (via their own client)
-		const memberSessionKey = createSessionKey(memberKeypair, messagingPackageId);
 		const preRemovalEnvelope = await memberClient.messaging.encryption.encrypt({
 			groupId,
 			encryptionHistoryId,
 			keyVersion: 0n,
-			sessionKey: memberSessionKey,
 			data: new TextEncoder().encode('before removal'),
 		});
 		expect(preRemovalEnvelope.keyVersion).toBe(0n);
@@ -423,34 +396,28 @@ describe('e2ee', () => {
 
 		// Removed member should fail seal_approve on the new key version.
 		// Create a fresh client so the member has no cached DEK for v1.
-		const removedMemberClient = createTestClient(clientConfig);
+		const removedMemberClient = createTestClient(clientConfig, memberKeypair);
 
 		await expect(
 			removedMemberClient.messaging.encryption.encrypt({
 				groupId,
 				encryptionHistoryId,
 				keyVersion: 1n,
-				sessionKey: memberSessionKey,
 				data: new TextEncoder().encode('should fail'),
 			}),
 		).rejects.toThrow(/seal_approve/);
 
 		// Admin should still succeed on v1
-		const adminSessionKey = createSessionKey(adminKeypair, messagingPackageId);
-
 		const postRemovalEnvelope = await adminClient.messaging.encryption.encrypt({
 			groupId,
 			encryptionHistoryId,
 			keyVersion: 1n,
-			sessionKey: adminSessionKey,
 			data: new TextEncoder().encode('after removal'),
 		});
 
 		const decrypted = await adminClient.messaging.encryption.decrypt({
 			groupId,
 			encryptionHistoryId,
-			keyVersion: 1n,
-			sessionKey: adminSessionKey,
 			envelope: postRemovalEnvelope,
 		});
 		expect(new TextDecoder().decode(decrypted)).toBe('after removal');

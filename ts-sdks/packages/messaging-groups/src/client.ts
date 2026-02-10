@@ -50,8 +50,8 @@ export function messagingGroups<const Name = 'messaging'>({
 }: {
 	name?: Name;
 	packageConfig?: MessagingGroupsPackageConfig;
-	encryption?: MessagingGroupsEncryptionOptions;
-} = {}) {
+	encryption: MessagingGroupsEncryptionOptions;
+}) {
 	return {
 		name,
 		register: (client: ClientWithCoreApi) => {
@@ -159,7 +159,7 @@ export class MessagingGroupsClient {
 			view: this.view,
 			derive: this.derive,
 			packageId: this.#packageConfig.packageId,
-			...options.encryption,
+			encryption: options.encryption,
 		});
 		this.call = new MessagingGroupsCall({
 			packageConfig: this.#packageConfig,

@@ -6,12 +6,10 @@
 export type { CryptoPrimitives } from './crypto-primitives.js';
 export type { SealIdentity, GeneratedDEK, DEKManagerConfig } from './dek-manager.js';
 export type {
-	SessionKeyManagerConfig,
-	RefreshSessionKeyCallback,
-} from './session-key-manager.js';
-export type {
 	EnvelopeEncryptionConfig,
 	EncryptedEnvelope,
+	EncryptOptions,
+	DecryptOptions,
 	SealApproveBuilder,
 } from './envelope-encryption.js';
 
