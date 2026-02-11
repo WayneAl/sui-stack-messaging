@@ -4,23 +4,25 @@
 // Types (re-exports from submodules)
 export type {
 	CryptoPrimitives,
-	SealIdentity,
 	GeneratedDEK,
 	DEKManagerConfig,
 	EnvelopeEncryptionConfig,
 	EncryptedEnvelope,
 	EncryptOptions,
 	DecryptOptions,
-	SealApproveBuilder,
+	SealPolicy,
 } from './types.js';
 
-export { IDENTITY_BYTES_LENGTH, DEK_LENGTH, NONCE_LENGTH } from './types.js';
+export { DEK_LENGTH, NONCE_LENGTH } from './types.js';
 
 // Crypto primitives
 export { WebCryptoPrimitives, getDefaultCryptoPrimitives } from './crypto-primitives.js';
 
 // DEK Manager
-export { DEKManager, encodeIdentity, decodeIdentity } from './dek-manager.js';
+export { DEKManager } from './dek-manager.js';
+
+// Seal Policy
+export { DefaultSealPolicy } from './seal-policy.js';
 
 // Envelope Encryption
 export { EnvelopeEncryption } from './envelope-encryption.js';

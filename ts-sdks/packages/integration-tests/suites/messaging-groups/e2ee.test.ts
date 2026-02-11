@@ -8,7 +8,7 @@ import { fromHex } from '@mysten/sui/utils';
 import { EncryptedObject, SessionKey } from '@mysten/seal';
 import type { SealCompatibleClient } from '@mysten/seal';
 import { permissionedGroups } from '@mysten/permissioned-groups';
-import { messagingGroups, decodeIdentity } from '@mysten/messaging-groups';
+import { messagingGroups, DefaultSealPolicy } from '@mysten/messaging-groups';
 import { requestSuiFromFaucetV2 } from '@mysten/sui/faucet';
 
 import { createMockSealClient } from '../../src/seal-mock/index.js';
@@ -139,7 +139,7 @@ describe('e2ee', () => {
 		expect(parsed.threshold).toBe(2);
 
 		// Verify identity bytes encode correct groupId + keyVersion=0
-		const identity = decodeIdentity(fromHex(parsed.id));
+		const identity = DefaultSealPolicy.decodeIdentity(fromHex(parsed.id));
 		const expectedGroupId = adminClient.messaging.derive.groupId({ uuid });
 		expect(identity.groupId).toBe(expectedGroupId);
 		expect(identity.keyVersion).toBe(0n);
@@ -341,7 +341,7 @@ describe('e2ee', () => {
 
 		// v1 identity should have keyVersion=1
 		const v1Parsed = EncryptedObject.parse(v1Key);
-		const v1Identity = decodeIdentity(fromHex(v1Parsed.id));
+		const v1Identity = DefaultSealPolicy.decodeIdentity(fromHex(v1Parsed.id));
 		expect(v1Identity.groupId).toBe(groupId);
 		expect(v1Identity.keyVersion).toBe(1n);
 	});
@@ -438,7 +438,7 @@ describe('e2ee', () => {
 		// Fetch DEK from chain and parse identity
 		const encryptedKeyBytes = await adminClient.messaging.view.currentEncryptedKey({ uuid });
 		const parsed = EncryptedObject.parse(encryptedKeyBytes);
-		const identity = decodeIdentity(fromHex(parsed.id));
+		const identity = DefaultSealPolicy.decodeIdentity(fromHex(parsed.id));
 
 		// groupId from identity must match derived groupId
 		expect(identity.groupId).toBe(groupId);

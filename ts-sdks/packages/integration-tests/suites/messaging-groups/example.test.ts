@@ -8,7 +8,7 @@ import { fromHex } from '@mysten/sui/utils';
 import { EncryptedObject, SessionKey } from '@mysten/seal';
 import type { SealCompatibleClient } from '@mysten/seal';
 import { permissionedGroups } from '@mysten/permissioned-groups';
-import { messagingGroups, decodeIdentity } from '@mysten/messaging-groups';
+import { messagingGroups, DefaultSealPolicy } from '@mysten/messaging-groups';
 
 import { createMockSealClient } from '../../src/seal-mock/index.js';
 import type { ClientWithCoreApi } from '@mysten/sui/client';
@@ -277,7 +277,7 @@ describe('messaging-groups', () => {
 		expect(parsed.threshold).toBe(2);
 
 		// Verify identity bytes encode the correct group ID and key version 0
-		const identity = decodeIdentity(fromHex(parsed.id));
+		const identity = DefaultSealPolicy.decodeIdentity(fromHex(parsed.id));
 		const expectedGroupId = client.messaging.derive.groupId({ uuid });
 		expect(identity.groupId).toBe(expectedGroupId);
 		expect(identity.keyVersion).toBe(0n);

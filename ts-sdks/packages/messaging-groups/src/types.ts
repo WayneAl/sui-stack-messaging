@@ -8,6 +8,7 @@ import type { ClientWithCoreApi } from '@mysten/sui/client';
 import type { TransactionArgument } from '@mysten/sui/transactions';
 
 import type { CryptoPrimitives } from './encryption/crypto-primitives.js';
+import type { SealPolicy } from './encryption/seal-policy.js';
 
 // === Package Configuration ===
 
@@ -73,6 +74,17 @@ export interface MessagingGroupsEncryptionOptions {
 	cryptoPrimitives?: CryptoPrimitives;
 	/** Seal threshold for DEK encryption (default: 2). */
 	sealThreshold?: number;
+	/**
+	 * Custom Seal policy for identity bytes and `seal_approve` transaction building.
+	 *
+	 * When not provided, {@link DefaultSealPolicy} is used — targeting the messaging
+	 * package's `seal_approve_reader` with identity format
+	 * `[groupId (32 bytes)][keyVersion (8 bytes LE u64)]`.
+	 *
+	 * Provide a custom policy to use a different package, identity scheme, or
+	 * access control logic (e.g., subscription-gated, NFT-gated, payment-based).
+	 */
+	sealPolicy?: SealPolicy;
 }
 
 export interface MessagingGroupsClientOptions {

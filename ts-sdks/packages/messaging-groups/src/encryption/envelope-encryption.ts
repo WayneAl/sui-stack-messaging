@@ -4,7 +4,7 @@
 import type { SealClient, SessionKey } from '@mysten/seal';
 import { EncryptedObject } from '@mysten/seal';
 import type { ClientCache, ClientWithCoreApi } from '@mysten/sui/client';
-import { Transaction, type TransactionResult } from '@mysten/sui/transactions';
+import { Transaction } from '@mysten/sui/transactions';
 import { fromHex } from '@mysten/sui/utils';
 
 import type { MessagingGroupsDerive } from '../derive.js';
@@ -13,6 +13,7 @@ import type { MessagingGroupsView } from '../view.js';
 import type { CryptoPrimitives } from './crypto-primitives.js';
 import { getDefaultCryptoPrimitives } from './crypto-primitives.js';
 import { DEKManager, NONCE_LENGTH, type GeneratedDEK } from './dek-manager.js';
+import { DefaultSealPolicy, type SealPolicy } from './seal-policy.js';
 import { SessionKeyManager } from './session-key-manager.js';
 
 /** The result of encrypting data with envelope encryption. */
@@ -27,42 +28,17 @@ export interface EncryptedEnvelope {
 	aad?: Uint8Array;
 }
 
-/**
- * Builds a custom `seal_approve` transaction thunk from the Seal identity bytes.
- *
- * Use this when your package implements a custom `seal_approve` function
- * (e.g. subscription-based, NFT-gated access). The returned thunk is
- * compatible with `tx.add()`.
- *
- * @example
- * ```ts
- * const customApprove: SealApproveBuilder = (identityBytes) => (tx) =>
- *   tx.moveCall({
- *     target: `${pkg}::my_policies::seal_approve_subscriber`,
- *     arguments: [
- *       tx.pure.vector('u8', Array.from(identityBytes)),
- *       tx.object(subscriptionId),
- *     ],
- *   });
- * ```
- */
-export type SealApproveBuilder = (
-	identityBytes: Uint8Array,
-) => (tx: Transaction) => TransactionResult;
-
 /** Options for encrypt(). */
 export type EncryptOptions = GroupRef & {
 	data: Uint8Array;
 	/** Key version to use. Default: latest from chain. */
 	keyVersion?: bigint;
 	aad?: Uint8Array;
-	sealApproveBuilder?: SealApproveBuilder;
 };
 
 /** Options for decrypt(). */
 export type DecryptOptions = GroupRef & {
 	envelope: EncryptedEnvelope;
-	sealApproveBuilder?: SealApproveBuilder;
 };
 
 /** Internal options for DEK resolution (after GroupRef is resolved). */
@@ -71,7 +47,6 @@ interface DEKResolutionOptions {
 	encryptionHistoryId: string;
 	keyVersion: bigint;
 	sessionKey: SessionKey;
-	sealApproveBuilder?: SealApproveBuilder;
 }
 
 export interface EnvelopeEncryptionConfig {
@@ -85,7 +60,7 @@ export interface EnvelopeEncryptionConfig {
 	derive: MessagingGroupsDerive;
 	/** Move package ID for the messaging module. */
 	packageId: string;
-	/** Encryption options (session key config, crypto, threshold). */
+	/** Encryption options (session key config, crypto, threshold, seal policy). */
 	encryption: MessagingGroupsEncryptionOptions;
 }
 
@@ -100,13 +75,17 @@ export interface EnvelopeEncryptionConfig {
  * Session keys are managed internally via {@link SessionKeyManager} — consumers
  * never pass session keys to individual operations.
  *
+ * Seal identity bytes and `seal_approve` transaction building are delegated
+ * to the configured {@link SealPolicy}. When no custom policy is provided,
+ * {@link DefaultSealPolicy} is used (messaging package's `seal_approve_reader`).
+ *
  * Decrypted DEKs are cached via {@link ClientCache} (scoped under `dek`)
  * so repeated operations for the same group/version don't re-invoke Seal.
  */
 export class EnvelopeEncryption {
 	readonly #dekManager: DEKManager;
+	readonly #sealPolicy: SealPolicy;
 	readonly #crypto: CryptoPrimitives;
-	readonly #packageId: string;
 	readonly #suiClient: ClientWithCoreApi;
 	readonly #view: MessagingGroupsView;
 	readonly #derive: MessagingGroupsDerive;
@@ -117,12 +96,13 @@ export class EnvelopeEncryption {
 		this.#suiClient = config.suiClient;
 		this.#view = config.view;
 		this.#derive = config.derive;
-		this.#packageId = config.packageId;
+		this.#sealPolicy =
+			config.encryption.sealPolicy ?? new DefaultSealPolicy(config.packageId);
 		this.#crypto = config.encryption.cryptoPrimitives ?? getDefaultCryptoPrimitives();
 		this.#dekCache = config.suiClient.cache.scope('dek');
 		this.#dekManager = new DEKManager({
 			sealClient: config.sealClient,
-			packageId: config.packageId,
+			sealPolicy: this.#sealPolicy,
 			cryptoPrimitives: config.encryption.cryptoPrimitives,
 			defaultThreshold: config.encryption.sealThreshold,
 		});
@@ -194,7 +174,6 @@ export class EnvelopeEncryption {
 			encryptionHistoryId,
 			keyVersion,
 			sessionKey,
-			sealApproveBuilder: options.sealApproveBuilder,
 		});
 
 		const nonce = this.#crypto.generateRandomBytes(NONCE_LENGTH);
@@ -225,7 +204,6 @@ export class EnvelopeEncryption {
 			encryptionHistoryId,
 			keyVersion: options.envelope.keyVersion,
 			sessionKey,
-			sealApproveBuilder: options.sealApproveBuilder,
 		});
 
 		return this.#crypto.aesGcmDecrypt(
@@ -271,7 +249,8 @@ export class EnvelopeEncryption {
 		const result = await this.#dekManager.generateDEK(options);
 
 		// Warm the cache so subsequent encrypt/decrypt calls skip Seal.
-		this.#putDEK(options.groupId, result.identity.keyVersion, result.dek);
+		const keyVersion = options.keyVersion ?? 0n;
+		this.#putDEK(options.groupId, keyVersion, result.dek);
 
 		return result;
 	}
@@ -291,7 +270,6 @@ export class EnvelopeEncryption {
 					encryptedDek,
 					groupId: options.groupId,
 					encryptionHistoryId: options.encryptionHistoryId,
-					builder: options.sealApproveBuilder,
 				});
 
 				return this.#dekManager.decryptDEK({
@@ -313,25 +291,18 @@ export class EnvelopeEncryption {
 		encryptedDek: Uint8Array;
 		groupId: string;
 		encryptionHistoryId: string;
-		builder?: SealApproveBuilder;
 	}): Promise<Uint8Array> {
 		const encryptedObject = EncryptedObject.parse(options.encryptedDek);
 		const identityBytes = fromHex(encryptedObject.id);
 
 		const tx = new Transaction();
-
-		if (options.builder) {
-			tx.add(options.builder(identityBytes));
-		} else {
-			tx.moveCall({
-				target: `${this.#packageId}::seal_policies::seal_approve_reader`,
-				arguments: [
-					tx.pure.vector('u8', Array.from(identityBytes)),
-					tx.object(options.groupId),
-					tx.object(options.encryptionHistoryId),
-				],
-			});
-		}
+		tx.add(
+			this.#sealPolicy.sealApproveThunk(
+				identityBytes,
+				options.groupId,
+				options.encryptionHistoryId,
+			),
+		);
 
 		return tx.build({ client: this.#suiClient, onlyTransactionKind: true });
 	}

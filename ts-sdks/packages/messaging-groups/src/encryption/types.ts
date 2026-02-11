@@ -4,13 +4,13 @@
 // Re-export types from encryption submodules for convenience.
 
 export type { CryptoPrimitives } from './crypto-primitives.js';
-export type { SealIdentity, GeneratedDEK, DEKManagerConfig } from './dek-manager.js';
+export type { GeneratedDEK, DEKManagerConfig } from './dek-manager.js';
 export type {
 	EnvelopeEncryptionConfig,
 	EncryptedEnvelope,
 	EncryptOptions,
 	DecryptOptions,
-	SealApproveBuilder,
 } from './envelope-encryption.js';
+export type { SealPolicy } from './seal-policy.js';
 
-export { IDENTITY_BYTES_LENGTH, DEK_LENGTH, NONCE_LENGTH } from './dek-manager.js';
+export { DEK_LENGTH, NONCE_LENGTH } from './dek-manager.js';
