@@ -141,12 +141,14 @@ export class MessagingGroupsView {
 	async #fetchEncryptionHistory(
 		encryptionHistoryId: string,
 	): Promise<EncryptionHistoryCache & { size: bigint }> {
-		const { object } = await this.#client.core.getObject({ objectId: encryptionHistoryId });
-		const content = await object.content;
-		const parsed = this.#bcs.EncryptionHistory.parse(content);
+		const { object } = await this.#client.core.getObject({
+			objectId: encryptionHistoryId,
+			include: { content: true },
+		});
+		const parsed = this.#bcs.EncryptionHistory.parse(object.content);
 
 		const meta: EncryptionHistoryCache = {
-			tableId: parsed.encrypted_keys.contents.id.id,
+			tableId: parsed.encrypted_keys.contents.id,
 			groupId: parsed.group_id,
 			uuid: parsed.uuid,
 		};
@@ -163,9 +165,11 @@ export class MessagingGroupsView {
 		const keyBytes = bcs.u64().serialize(index).toBytes();
 		const dynamicFieldId = deriveDynamicFieldID(tableId, 'u64', keyBytes);
 
-		const { object } = await this.#client.core.getObject({ objectId: dynamicFieldId });
-		const content = await object.content;
-		const parsed = TableVecEntryField.parse(content);
+		const { object } = await this.#client.core.getObject({
+			objectId: dynamicFieldId,
+			include: { content: true },
+		});
+		const parsed = TableVecEntryField.parse(object.content);
 
 		return new Uint8Array(parsed.value);
 	}

@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { SuiClient } from '@mysten/sui/client';
+import type { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
 import { fromBase64 } from '@mysten/sui/utils';
 import { getPublishBytes, testPublish } from '../../../../../publish/src/utils/index.js';
 import type { Account, MovePackageConfig, PublishedPackage } from '../types.js';
@@ -18,7 +18,7 @@ export async function publishPackage({
 	suiToolsContainerId,
 }: {
 	packageConfig: MovePackageConfig;
-	suiClient: SuiClient;
+	suiClient: SuiJsonRpcClient;
 	sender: Account;
 	suiToolsContainerId: string;
 }): Promise<PublishedPackage> {
@@ -110,7 +110,7 @@ export async function publishPackages({
 	suiToolsContainerId,
 }: {
 	packages: MovePackageConfig[];
-	suiClient: SuiClient;
+	suiClient: SuiJsonRpcClient;
 	sender: Account;
 	suiToolsContainerId: string;
 }): Promise<Record<string, PublishedPackage>> {

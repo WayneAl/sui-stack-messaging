@@ -3,7 +3,7 @@
 
 import '../../src/vitest.js';
 import type { TestProject } from 'vitest/node';
-import { SuiClient } from '@mysten/sui/client';
+import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
 import { requestSuiFromFaucetV2 } from '@mysten/sui/faucet';
 import { startSuiLocalnet, publishPackages } from '../../src/fixtures/index.js';
 import { execCommand } from '../../src/utils/exec-command.js';
@@ -43,7 +43,7 @@ export default async function setup(project: TestProject) {
 	await execCommand(['sui', 'client', 'faucet', '--json'], SUI_TOOLS_CONTAINER_ID);
 
 	console.log('Preparing admin account...');
-	const suiClient = new SuiClient({ url: SUI_CLIENT_URL });
+	const suiClient = new SuiJsonRpcClient({ url: SUI_CLIENT_URL, network: 'localnet' });
 	const admin = getNewAccount();
 	await requestSuiFromFaucetV2({
 		host: `http://localhost:${FAUCET_PORT}`,

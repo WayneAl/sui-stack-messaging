@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { bcs } from '@mysten/sui/bcs';
-import { deriveDynamicFieldID } from '@mysten/sui/utils';
+import { deriveDynamicFieldID, deriveObjectID } from '@mysten/sui/utils';
 
-import { PermissionedGroup } from './contracts/permissioned_groups/permissioned_group.js';
+import { PERMISSIONS_TABLE_DERIVATION_KEY } from './constants.js';
 import type {
 	HasPermissionViewOptions,
 	IsMemberViewOptions,
@@ -12,18 +12,10 @@ import type {
 	PermissionedGroupsPackageConfig,
 } from './types.js';
 
-export interface PermissionedGroupsViewOptions {
-	packageConfig: PermissionedGroupsPackageConfig;
-	witnessType: string;
-	client: PermissionedGroupsCompatibleClient;
-}
-
 /**
- * BCS type for Table dynamic field entries.
- * A Table stores entries as dynamic fields with the key as the field name
- * and a Field<K, V> struct as the value.
+ * BCS type for dynamic field entries keyed by address with VecSet<TypeName> values.
  */
-const TableFieldValue = bcs.struct('Field', {
+const DynamicFieldEntry = bcs.struct('Field', {
 	id: bcs.Address,
 	name: bcs.Address,
 	value: bcs.vector(
@@ -32,6 +24,12 @@ const TableFieldValue = bcs.struct('Field', {
 		}),
 	),
 });
+
+export interface PermissionedGroupsViewOptions {
+	packageConfig: PermissionedGroupsPackageConfig;
+	witnessType: string;
+	client: PermissionedGroupsCompatibleClient;
+}
 
 /**
  * View methods for querying permissioned group state.
@@ -58,30 +56,23 @@ const TableFieldValue = bcs.struct('Field', {
  */
 export class PermissionedGroupsView {
 	#client: PermissionedGroupsCompatibleClient;
-	/** Cache for permissions table IDs (groupId -> tableId). Table IDs never change after creation. */
-	#permissionsTableIdCache = new Map<string, string>();
 
 	constructor(options: PermissionedGroupsViewOptions) {
 		this.#client = options.client;
 	}
 
 	/**
-	 * Fetches and parses the permissions table ID from a PermissionedGroup object.
-	 * Results are cached since the table ID never changes after group creation.
+	 * Derives the PermissionsTable object ID from a PermissionedGroup ID.
+	 *
+	 * The PermissionsTable is a derived object from its parent PermissionedGroup,
+	 * using the fixed derivation key "permissions_table" (as a Move `String`).
+	 * This makes the table ID fully deterministic — no RPC call needed.
 	 */
-	async #getPermissionsTableId(groupId: string): Promise<string> {
-		const cached = this.#permissionsTableIdCache.get(groupId);
-		if (cached) {
-			return cached;
-		}
-
-		const { object } = await this.#client.core.getObject({ objectId: groupId });
-		const content = await object.content;
-		const parsed = PermissionedGroup.parse(content);
-		const tableId = parsed.permissions.id.id;
-
-		this.#permissionsTableIdCache.set(groupId, tableId);
-		return tableId;
+	#derivePermissionsTableId(groupId: string): string {
+		const string_type =
+			'0x0000000000000000000000000000000000000000000000000000000000000001::string::String';
+		const keyBytes = bcs.string().serialize(PERMISSIONS_TABLE_DERIVATION_KEY).toBytes();
+		return deriveObjectID(groupId, string_type, keyBytes);
 	}
 
 	/**
@@ -89,17 +80,19 @@ export class PermissionedGroupsView {
 	 * Returns null if the member is not in the group.
 	 */
 	async #getMemberPermissions(groupId: string, member: string): Promise<string[] | null> {
-		const tableId = await this.#getPermissionsTableId(groupId);
+		const tableId = this.#derivePermissionsTableId(groupId);
 
-		// Derive the dynamic field ID for this member's entry in the table
-		// Table entries use address as the key type
+		// Derive the dynamic field ID for this member's entry in the table.
+		// Table entries use `address` as the key type.
 		const memberBcs = bcs.Address.serialize(member).toBytes();
 		const dynamicFieldId = deriveDynamicFieldID(tableId, 'address', memberBcs);
 
 		try {
-			const { object } = await this.#client.core.getObject({ objectId: dynamicFieldId });
-			const content = await object.content;
-			const parsed = TableFieldValue.parse(content);
+			const { object } = await this.#client.core.getObject({
+				objectId: dynamicFieldId,
+				include: { content: true },
+			});
+			const parsed = DynamicFieldEntry.parse(object.content);
 			return parsed.value.map((typeName) => typeName.name);
 		} catch {
 			// Object doesn't exist means member is not in the group

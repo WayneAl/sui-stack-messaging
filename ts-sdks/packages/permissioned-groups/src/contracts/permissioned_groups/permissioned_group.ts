@@ -1,5 +1,6 @@
-// Copyright (c) Mysten Labs, Inc.
-// SPDX-License-Identifier: Apache-2.0
+/**************************************************************
+ * THIS FILE IS GENERATED AND SHOULD NOT BE MANUALLY MODIFIED *
+ **************************************************************/
 
 /**
  * Module: permissioned_group
@@ -32,13 +33,15 @@
  *   allowed)
  */
 
-import { MoveTuple, MoveStruct, normalizeMoveArguments } from '../utils/index.js';
-import type { RawTransactionArgument } from '../utils/index.js';
-import { bcs } from '@mysten/sui/bcs';
-import type { BcsType } from '@mysten/sui/bcs';
-import type { Transaction } from '@mysten/sui/transactions';
-import * as object from './deps/sui/object.js';
-import * as table from './deps/sui/table.js';
+import {
+	MoveTuple,
+	MoveStruct,
+	normalizeMoveArguments,
+	type RawTransactionArgument,
+} from '../utils/index.js';
+import { bcs, type BcsType } from '@mysten/sui/bcs';
+import { type Transaction } from '@mysten/sui/transactions';
+import * as permissions_table from './permissions_table.js';
 import * as type_name from './deps/std/type_name.js';
 const $moduleName = '@local-pkg/permissioned-groups::permissioned_group';
 export const Administrator = new MoveTuple({
@@ -52,12 +55,12 @@ export const ExtensionPermissionsManager = new MoveTuple({
 export const PermissionedGroup = new MoveStruct({
 	name: `${$moduleName}::PermissionedGroup`,
 	fields: {
-		id: object.UID,
+		id: bcs.Address,
 		/**
 		 * Maps member addresses (user or object) to their permission set. Object addresses
 		 * enable `object_*` functions for third-party "actor" contracts.
 		 */
-		permissions: table.Table,
+		permissions: permissions_table.PermissionsTable,
 		/** Tracks `Administrator` count to enforce at-least-one invariant. */
 		administrators_count: bcs.u64(),
 		/** Original creator's address */
@@ -73,19 +76,24 @@ export const GroupCreated = new MoveStruct({
 		creator: bcs.Address,
 	},
 });
-export const GroupDerived = new MoveStruct({
-	name: `${$moduleName}::GroupDerived`,
-	fields: {
-		/** ID of the created group. */
-		group_id: bcs.Address,
-		/** Address of the group creator. */
-		creator: bcs.Address,
-		/** ID of the parent object from which the group was derived. */
-		parent_id: bcs.Address,
-		/** Type name of the derivation key used. */
-		derivation_key_type: type_name.TypeName,
-	},
-});
+/** Emitted when a new PermissionedGroup is created via `new_derived`. */
+export function GroupDerived<DerivationKey extends BcsType<any>>(
+	...typeParameters: [DerivationKey]
+) {
+	return new MoveStruct({
+		name: `${$moduleName}::GroupDerived<${typeParameters[0].name as DerivationKey['name']}>`,
+		fields: {
+			/** ID of the created group. */
+			group_id: bcs.Address,
+			/** Address of the group creator. */
+			creator: bcs.Address,
+			/** ID of the parent object from which the group was derived. */
+			parent_id: bcs.Address,
+			/** derivation key used. */
+			derivation_key: typeParameters[0],
+		},
+	});
+}
 export const MemberAdded = new MoveStruct({
 	name: `${$moduleName}::MemberAdded`,
 	fields: {
@@ -154,7 +162,7 @@ export interface NewOptions<T extends BcsType<any>> {
  */
 export function _new<T extends BcsType<any>>(options: NewOptions<T>) {
 	const packageAddress = options.package ?? '@local-pkg/permissioned-groups';
-	const argumentsTypes = [`${options.typeArguments[0]}`] satisfies string[];
+	const argumentsTypes = [`${options.typeArguments[0]}`] satisfies (string | null)[];
 	const parameterNames = ['Witness'];
 	return (tx: Transaction) =>
 		tx.moveCall({
@@ -211,9 +219,9 @@ export function newDerived<T extends BcsType<any>, DerivationKey extends BcsType
 	const packageAddress = options.package ?? '@local-pkg/permissioned-groups';
 	const argumentsTypes = [
 		`${options.typeArguments[0]}`,
-		'0x0000000000000000000000000000000000000000000000000000000000000002::object::UID',
+		'0x2::object::ID',
 		`${options.typeArguments[1]}`,
-	] satisfies string[];
+	] satisfies (string | null)[];
 	const parameterNames = ['Witness', 'derivationUid', 'derivationKey'];
 	return (tx: Transaction) =>
 		tx.moveCall({
@@ -263,10 +271,7 @@ export interface GrantPermissionOptions {
  */
 export function grantPermission(options: GrantPermissionOptions) {
 	const packageAddress = options.package ?? '@local-pkg/permissioned-groups';
-	const argumentsTypes = [
-		`${packageAddress}::permissioned_group::PermissionedGroup<${options.typeArguments[0]}>`,
-		'address',
-	] satisfies string[];
+	const argumentsTypes = [null, 'address'] satisfies (string | null)[];
 	const parameterNames = ['self', 'member'];
 	return (tx: Transaction) =>
 		tx.moveCall({
@@ -321,11 +326,7 @@ export interface ObjectGrantPermissionOptions {
  */
 export function objectGrantPermission(options: ObjectGrantPermissionOptions) {
 	const packageAddress = options.package ?? '@local-pkg/permissioned-groups';
-	const argumentsTypes = [
-		`${packageAddress}::permissioned_group::PermissionedGroup<${options.typeArguments[0]}>`,
-		'0x0000000000000000000000000000000000000000000000000000000000000002::object::UID',
-		'address',
-	] satisfies string[];
+	const argumentsTypes = [null, '0x2::object::ID', 'address'] satisfies (string | null)[];
 	const parameterNames = ['self', 'actorObject', 'recipient'];
 	return (tx: Transaction) =>
 		tx.moveCall({
@@ -365,10 +366,7 @@ export interface RemoveMemberOptions {
  */
 export function removeMember(options: RemoveMemberOptions) {
 	const packageAddress = options.package ?? '@local-pkg/permissioned-groups';
-	const argumentsTypes = [
-		`${packageAddress}::permissioned_group::PermissionedGroup<${options.typeArguments[0]}>`,
-		'address',
-	] satisfies string[];
+	const argumentsTypes = [null, 'address'] satisfies (string | null)[];
 	const parameterNames = ['self', 'member'];
 	return (tx: Transaction) =>
 		tx.moveCall({
@@ -414,11 +412,7 @@ export interface ObjectRemoveMemberOptions {
  */
 export function objectRemoveMember(options: ObjectRemoveMemberOptions) {
 	const packageAddress = options.package ?? '@local-pkg/permissioned-groups';
-	const argumentsTypes = [
-		`${packageAddress}::permissioned_group::PermissionedGroup<${options.typeArguments[0]}>`,
-		'0x0000000000000000000000000000000000000000000000000000000000000002::object::UID',
-		'address',
-	] satisfies string[];
+	const argumentsTypes = [null, '0x2::object::ID', 'address'] satisfies (string | null)[];
 	const parameterNames = ['self', 'actorObject', 'member'];
 	return (tx: Transaction) =>
 		tx.moveCall({
@@ -471,10 +465,7 @@ export interface RevokePermissionOptions {
  */
 export function revokePermission(options: RevokePermissionOptions) {
 	const packageAddress = options.package ?? '@local-pkg/permissioned-groups';
-	const argumentsTypes = [
-		`${packageAddress}::permissioned_group::PermissionedGroup<${options.typeArguments[0]}>`,
-		'address',
-	] satisfies string[];
+	const argumentsTypes = [null, 'address'] satisfies (string | null)[];
 	const parameterNames = ['self', 'member'];
 	return (tx: Transaction) =>
 		tx.moveCall({
@@ -532,11 +523,7 @@ export interface ObjectRevokePermissionOptions {
  */
 export function objectRevokePermission(options: ObjectRevokePermissionOptions) {
 	const packageAddress = options.package ?? '@local-pkg/permissioned-groups';
-	const argumentsTypes = [
-		`${packageAddress}::permissioned_group::PermissionedGroup<${options.typeArguments[0]}>`,
-		'0x0000000000000000000000000000000000000000000000000000000000000002::object::UID',
-		'address',
-	] satisfies string[];
+	const argumentsTypes = [null, '0x2::object::ID', 'address'] satisfies (string | null)[];
 	const parameterNames = ['self', 'actorObject', 'member'];
 	return (tx: Transaction) =>
 		tx.moveCall({
@@ -577,10 +564,7 @@ export interface HasPermissionOptions {
  */
 export function hasPermission(options: HasPermissionOptions) {
 	const packageAddress = options.package ?? '@local-pkg/permissioned-groups';
-	const argumentsTypes = [
-		`${packageAddress}::permissioned_group::PermissionedGroup<${options.typeArguments[0]}>`,
-		'address',
-	] satisfies string[];
+	const argumentsTypes = [null, 'address'] satisfies (string | null)[];
 	const parameterNames = ['self', 'member'];
 	return (tx: Transaction) =>
 		tx.moveCall({
@@ -605,6 +589,10 @@ export interface IsMemberOptions {
 /**
  * Checks if the given address is a member of the group.
  *
+ * # Type Parameters
+ *
+ * - `T`: Package witness type
+ *
  * # Parameters
  *
  * - `self`: Reference to the PermissionedGroup
@@ -616,10 +604,7 @@ export interface IsMemberOptions {
  */
 export function isMember(options: IsMemberOptions) {
 	const packageAddress = options.package ?? '@local-pkg/permissioned-groups';
-	const argumentsTypes = [
-		`${packageAddress}::permissioned_group::PermissionedGroup<${options.typeArguments[0]}>`,
-		'address',
-	] satisfies string[];
+	const argumentsTypes = [null, 'address'] satisfies (string | null)[];
 	const parameterNames = ['self', 'member'];
 	return (tx: Transaction) =>
 		tx.moveCall({
@@ -651,9 +636,7 @@ export interface CreatorOptions {
  */
 export function creator(options: CreatorOptions) {
 	const packageAddress = options.package ?? '@local-pkg/permissioned-groups';
-	const argumentsTypes = [
-		`${packageAddress}::permissioned_group::PermissionedGroup<${options.typeArguments[0]}>`,
-	] satisfies string[];
+	const argumentsTypes = [null] satisfies (string | null)[];
 	const parameterNames = ['self'];
 	return (tx: Transaction) =>
 		tx.moveCall({
@@ -685,9 +668,7 @@ export interface AdministratorsCountOptions {
  */
 export function administratorsCount(options: AdministratorsCountOptions) {
 	const packageAddress = options.package ?? '@local-pkg/permissioned-groups';
-	const argumentsTypes = [
-		`${packageAddress}::permissioned_group::PermissionedGroup<${options.typeArguments[0]}>`,
-	] satisfies string[];
+	const argumentsTypes = [null] satisfies (string | null)[];
 	const parameterNames = ['self'];
 	return (tx: Transaction) =>
 		tx.moveCall({

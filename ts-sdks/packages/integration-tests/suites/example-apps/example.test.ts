@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, it, expect, inject } from 'vitest';
-import { SuiClient } from '@mysten/sui/client';
+import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
 
 describe('example-apps', () => {
 	it('should have published all packages', () => {
@@ -16,7 +16,7 @@ describe('example-apps', () => {
 		const suiClientUrl = inject('suiClientUrl');
 		const adminAccount = inject('adminAccount');
 
-		const suiClient = new SuiClient({ url: suiClientUrl });
+		const suiClient = new SuiJsonRpcClient({ url: suiClientUrl, network: 'localnet' });
 		const balance = await suiClient.getBalance({
 			owner: adminAccount.address,
 		});

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, it, expect, inject } from 'vitest';
-import { SuiClient } from '@mysten/sui/client';
+import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { bcs } from '@mysten/sui/bcs';
 import { fromHex, toHex } from '@mysten/sui/utils';
@@ -79,7 +79,7 @@ describe('messaging-groups', () => {
 		const suiClientUrl = inject('suiClientUrl');
 		const adminAccount = inject('adminAccount');
 
-		const suiClient = new SuiClient({ url: suiClientUrl });
+		const suiClient = new SuiJsonRpcClient({ url: suiClientUrl, network: 'localnet' });
 		const balance = await suiClient.getBalance({
 			owner: adminAccount.address,
 		});
@@ -97,8 +97,9 @@ describe('messaging-groups', () => {
 		const witnessType = `${messagingPackageId}::messaging::Messaging`;
 
 		// Create SuiClient with MVR overrides for localnet
-		const suiClient = new SuiClient({
+		const suiClient = new SuiJsonRpcClient({
 			url: suiClientUrl,
+			network: 'localnet',
 			mvr: {
 				overrides: {
 					packages: {
@@ -109,16 +110,13 @@ describe('messaging-groups', () => {
 			},
 		});
 
-		// Extend with PermissionedGroupsClient first (required by MessagingGroupsClient)
-		const clientWithGroups = suiClient.$extend(
+		// Use a single $extend call with both extensions to work around v2 SDK
+		// limitation where chained $extend calls lose previous extensions.
+		const client = suiClient.$extend(
 			permissionedGroups({
 				packageConfig: { packageId: permissionedGroupsPackageId },
 				witnessType,
 			}),
-		);
-
-		// Extend with MessagingGroupsClient
-		const client = clientWithGroups.$extend(
 			messagingGroups({
 				packageConfig: {
 					packageId: messagingPackageId,
@@ -149,8 +147,9 @@ describe('messaging-groups', () => {
 		const messagingPackageId = publishedPackages['messaging'].packageId;
 		const witnessType = `${messagingPackageId}::messaging::Messaging`;
 
-		const suiClient = new SuiClient({
+		const suiClient = new SuiJsonRpcClient({
 			url: suiClientUrl,
+			network: 'localnet',
 			mvr: {
 				overrides: {
 					packages: {
@@ -161,21 +160,18 @@ describe('messaging-groups', () => {
 			},
 		});
 
-		const client = suiClient
-			.$extend(
-				permissionedGroups({
-					packageConfig: { packageId: permissionedGroupsPackageId },
-					witnessType,
-				}),
-			)
-			.$extend(
-				messagingGroups({
-					packageConfig: {
-						packageId: messagingPackageId,
-						namespaceId: namespaceId!,
-					},
-				}),
-			);
+		const client = suiClient.$extend(
+			permissionedGroups({
+				packageConfig: { packageId: permissionedGroupsPackageId },
+				witnessType,
+			}),
+			messagingGroups({
+				packageConfig: {
+					packageId: messagingPackageId,
+					namespaceId: namespaceId!,
+				},
+			}),
+		);
 
 		// Verify messaging BCS types have correct package-scoped names
 		expect(client.messaging.bcs.Messaging.name).toBe(`${messagingPackageId}::messaging::Messaging`);
@@ -205,8 +201,9 @@ describe('messaging-groups', () => {
 		const messagingPackageId = publishedPackages['messaging'].packageId;
 		const witnessType = `${messagingPackageId}::messaging::Messaging`;
 
-		const suiClient = new SuiClient({
+		const suiClient = new SuiJsonRpcClient({
 			url: suiClientUrl,
+			network: 'localnet',
 			mvr: {
 				overrides: {
 					packages: {
@@ -217,21 +214,18 @@ describe('messaging-groups', () => {
 			},
 		});
 
-		const client = suiClient
-			.$extend(
-				permissionedGroups({
-					packageConfig: { packageId: permissionedGroupsPackageId },
-					witnessType,
-				}),
-			)
-			.$extend(
-				messagingGroups({
-					packageConfig: {
-						packageId: messagingPackageId,
-						namespaceId: namespaceId!,
-					},
-				}),
-			);
+		const client = suiClient.$extend(
+			permissionedGroups({
+				packageConfig: { packageId: permissionedGroupsPackageId },
+				witnessType,
+			}),
+			messagingGroups({
+				packageConfig: {
+					packageId: messagingPackageId,
+					namespaceId: namespaceId!,
+				},
+			}),
+		);
 
 		// Create a mock encrypted DEK with proper identity bytes
 		const mockEncryptedDek = createMockEncryptedDEK();
@@ -257,8 +251,9 @@ describe('messaging-groups', () => {
 		const messagingPackageId = publishedPackages['messaging'].packageId;
 		const witnessType = `${messagingPackageId}::messaging::Messaging`;
 
-		const suiClient = new SuiClient({
+		const suiClient = new SuiJsonRpcClient({
 			url: suiClientUrl,
+			network: 'localnet',
 			mvr: {
 				overrides: {
 					packages: {
@@ -271,21 +266,18 @@ describe('messaging-groups', () => {
 
 		const keypair = Ed25519Keypair.fromSecretKey(adminAccount.secretKey);
 
-		const client = suiClient
-			.$extend(
-				permissionedGroups({
-					packageConfig: { packageId: permissionedGroupsPackageId },
-					witnessType,
-				}),
-			)
-			.$extend(
-				messagingGroups({
-					packageConfig: {
-						packageId: messagingPackageId,
-						namespaceId: namespaceId!,
-					},
-				}),
-			);
+		const client = suiClient.$extend(
+			permissionedGroups({
+				packageConfig: { packageId: permissionedGroupsPackageId },
+				witnessType,
+			}),
+			messagingGroups({
+				packageConfig: {
+					packageId: messagingPackageId,
+					namespaceId: namespaceId!,
+				},
+			}),
+		);
 
 		// Create mock encrypted DEK
 		const mockEncryptedDek = createMockEncryptedDEK();
@@ -312,8 +304,9 @@ describe('messaging-groups', () => {
 		const messagingPackageId = publishedPackages['messaging'].packageId;
 		const witnessType = `${messagingPackageId}::messaging::Messaging`;
 
-		const suiClient = new SuiClient({
+		const suiClient = new SuiJsonRpcClient({
 			url: suiClientUrl,
+			network: 'localnet',
 			mvr: {
 				overrides: {
 					packages: {
@@ -326,21 +319,18 @@ describe('messaging-groups', () => {
 
 		const keypair = Ed25519Keypair.fromSecretKey(adminAccount.secretKey);
 
-		const client = suiClient
-			.$extend(
-				permissionedGroups({
-					packageConfig: { packageId: permissionedGroupsPackageId },
-					witnessType,
-				}),
-			)
-			.$extend(
-				messagingGroups({
-					packageConfig: {
-						packageId: messagingPackageId,
-						namespaceId: namespaceId!,
-					},
-				}),
-			);
+		const client = suiClient.$extend(
+			permissionedGroups({
+				packageConfig: { packageId: permissionedGroupsPackageId },
+				witnessType,
+			}),
+			messagingGroups({
+				packageConfig: {
+					packageId: messagingPackageId,
+					namespaceId: namespaceId!,
+				},
+			}),
+		);
 
 		const uuid = crypto.randomUUID();
 		const mockEncryptedDek = createMockEncryptedDEK();
@@ -379,8 +369,9 @@ describe('messaging-groups', () => {
 		const messagingPackageId = publishedPackages['messaging'].packageId;
 		const witnessType = `${messagingPackageId}::messaging::Messaging`;
 
-		const suiClient = new SuiClient({
+		const suiClient = new SuiJsonRpcClient({
 			url: suiClientUrl,
+			network: 'localnet',
 			mvr: {
 				overrides: {
 					packages: {
@@ -393,21 +384,18 @@ describe('messaging-groups', () => {
 
 		const keypair = Ed25519Keypair.fromSecretKey(adminAccount.secretKey);
 
-		const client = suiClient
-			.$extend(
-				permissionedGroups({
-					packageConfig: { packageId: permissionedGroupsPackageId },
-					witnessType,
-				}),
-			)
-			.$extend(
-				messagingGroups({
-					packageConfig: {
-						packageId: messagingPackageId,
-						namespaceId: namespaceId!,
-					},
-				}),
-			);
+		const client = suiClient.$extend(
+			permissionedGroups({
+				packageConfig: { packageId: permissionedGroupsPackageId },
+				witnessType,
+			}),
+			messagingGroups({
+				packageConfig: {
+					packageId: messagingPackageId,
+					namespaceId: namespaceId!,
+				},
+			}),
+		);
 
 		const uuid = crypto.randomUUID();
 		const mockEncryptedDek = createMockEncryptedDEK();
@@ -443,8 +431,9 @@ describe('messaging-groups', () => {
 		const messagingPackageId = publishedPackages['messaging'].packageId;
 		const witnessType = `${messagingPackageId}::messaging::Messaging`;
 
-		const suiClient = new SuiClient({
+		const suiClient = new SuiJsonRpcClient({
 			url: suiClientUrl,
+			network: 'localnet',
 			mvr: {
 				overrides: {
 					packages: {
@@ -457,21 +446,18 @@ describe('messaging-groups', () => {
 
 		const keypair = Ed25519Keypair.fromSecretKey(adminAccount.secretKey);
 
-		const client = suiClient
-			.$extend(
-				permissionedGroups({
-					packageConfig: { packageId: permissionedGroupsPackageId },
-					witnessType,
-				}),
-			)
-			.$extend(
-				messagingGroups({
-					packageConfig: {
-						packageId: messagingPackageId,
-						namespaceId: namespaceId!,
-					},
-				}),
-			);
+		const client = suiClient.$extend(
+			permissionedGroups({
+				packageConfig: { packageId: permissionedGroupsPackageId },
+				witnessType,
+			}),
+			messagingGroups({
+				packageConfig: {
+					packageId: messagingPackageId,
+					namespaceId: namespaceId!,
+				},
+			}),
+		);
 
 		const uuid = crypto.randomUUID();
 		const mockEncryptedDek = createMockEncryptedDEK();

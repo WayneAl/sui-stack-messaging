@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, it, expect, inject } from 'vitest';
-import { SuiClient } from '@mysten/sui/client';
+import { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
 import { permissionedGroups } from '@mysten/permissioned-groups';
 
 describe('permissioned-groups', () => {
@@ -18,7 +18,7 @@ describe('permissioned-groups', () => {
 		const suiClientUrl = inject('suiClientUrl');
 		const adminAccount = inject('adminAccount');
 
-		const suiClient = new SuiClient({ url: suiClientUrl });
+		const suiClient = new SuiJsonRpcClient({ url: suiClientUrl, network: 'localnet' });
 		const balance = await suiClient.getBalance({
 			owner: adminAccount.address,
 		});
@@ -34,8 +34,9 @@ describe('permissioned-groups', () => {
 		const witnessType = `${dummyTestWitnessPackageId}::dummy_test_witness::DummyTestWitness`;
 
 		// Create SuiClient with MVR override for localnet
-		const suiClient = new SuiClient({
+		const suiClient = new SuiJsonRpcClient({
 			url: suiClientUrl,
+			network: 'localnet',
 			mvr: {
 				overrides: {
 					packages: {
@@ -67,8 +68,9 @@ describe('permissioned-groups', () => {
 		const dummyTestWitnessPackageId = publishedPackages['dummy-test-witness'].packageId;
 		const witnessType = `${dummyTestWitnessPackageId}::dummy_test_witness::DummyTestWitness`;
 
-		const suiClient = new SuiClient({
+		const suiClient = new SuiJsonRpcClient({
 			url: suiClientUrl,
+			network: 'localnet',
 			mvr: {
 				overrides: {
 					packages: {
@@ -87,13 +89,13 @@ describe('permissioned-groups', () => {
 
 		// Verify BCS types are defined with correct package-scoped names
 		expect(client.groups.bcs.PermissionedGroup.name).toBe(
-			`${packageId}::permissioned_group::PermissionedGroup`,
+			`${packageId}::permissioned_group::PermissionedGroup<${witnessType}>`,
 		);
 		expect(client.groups.bcs.Administrator.name).toBe(
 			`${packageId}::permissioned_group::Administrator`,
 		);
 		expect(client.groups.bcs.MemberAdded.name).toBe(
-			`${packageId}::permissioned_group::MemberAdded`,
+			`${packageId}::permissioned_group::MemberAdded<${witnessType}>`,
 		);
 	});
 });

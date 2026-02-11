@@ -1,5 +1,6 @@
-// Copyright (c) Mysten Labs, Inc.
-// SPDX-License-Identifier: Apache-2.0
+/**************************************************************
+ * THIS FILE IS GENERATED AND SHOULD NOT BE MANUALLY MODIFIED *
+ **************************************************************/
 
 /**
  * Module: encryption_history
@@ -19,11 +20,14 @@
  * - `messaging::rotate_encryption_key` - rotates keys
  */
 
-import { MoveTuple, MoveStruct, normalizeMoveArguments } from '../utils/index.js';
-import type { RawTransactionArgument } from '../utils/index.js';
+import {
+	MoveTuple,
+	MoveStruct,
+	normalizeMoveArguments,
+	type RawTransactionArgument,
+} from '../utils/index.js';
 import { bcs } from '@mysten/sui/bcs';
-import type { Transaction } from '@mysten/sui/transactions';
-import * as object from './deps/sui/object.js';
+import { type Transaction } from '@mysten/sui/transactions';
 import * as table_vec from './deps/sui/table_vec.js';
 const $moduleName = '@local-pkg/messaging::encryption_history';
 export const EncryptionHistoryTag = new MoveTuple({
@@ -41,8 +45,8 @@ export const EncryptionKeyRotator = new MoveTuple({
 export const EncryptionHistory = new MoveStruct({
 	name: `${$moduleName}::EncryptionHistory`,
 	fields: {
-		id: object.UID,
-		/** Associated `PermissionsGroup<Messaging>` ID. */
+		id: bcs.Address,
+		/** Associated `PermissionedGroup<Messaging>` ID. */
 		group_id: bcs.Address,
 		/** UUID used for derivation. */
 		uuid: bcs.string(),
@@ -58,7 +62,7 @@ export const EncryptionHistoryCreated = new MoveStruct({
 	fields: {
 		/** ID of the created EncryptionHistory. */
 		encryption_history_id: bcs.Address,
-		/** ID of the associated PermissionsGroup<Messaging>. */
+		/** ID of the associated PermissionedGroup<Messaging>. */
 		group_id: bcs.Address,
 		/** UUID used for derivation. */
 		uuid: bcs.string(),
@@ -71,7 +75,7 @@ export const EncryptionKeyRotated = new MoveStruct({
 	fields: {
 		/** ID of the EncryptionHistory. */
 		encryption_history_id: bcs.Address,
-		/** ID of the associated PermissionsGroup<Messaging>. */
+		/** ID of the associated PermissionedGroup<Messaging>. */
 		group_id: bcs.Address,
 		/** New key version (0-indexed). */
 		new_key_version: bcs.u64(),
@@ -87,7 +91,7 @@ export interface GroupIdOptions {
 	arguments: GroupIdArguments | [self: RawTransactionArgument<string>];
 }
 /**
- * Returns the associated `PermissionsGroup<Messaging>` ID.
+ * Returns the associated `PermissionedGroup<Messaging>` ID.
  *
  * # Parameters
  *
@@ -99,9 +103,7 @@ export interface GroupIdOptions {
  */
 export function groupId(options: GroupIdOptions) {
 	const packageAddress = options.package ?? '@local-pkg/messaging';
-	const argumentsTypes = [
-		`${packageAddress}::encryption_history::EncryptionHistory`,
-	] satisfies string[];
+	const argumentsTypes = [null] satisfies (string | null)[];
 	const parameterNames = ['self'];
 	return (tx: Transaction) =>
 		tx.moveCall({
@@ -131,9 +133,7 @@ export interface CurrentKeyVersionOptions {
  */
 export function currentKeyVersion(options: CurrentKeyVersionOptions) {
 	const packageAddress = options.package ?? '@local-pkg/messaging';
-	const argumentsTypes = [
-		`${packageAddress}::encryption_history::EncryptionHistory`,
-	] satisfies string[];
+	const argumentsTypes = [null] satisfies (string | null)[];
 	const parameterNames = ['self'];
 	return (tx: Transaction) =>
 		tx.moveCall({
@@ -171,10 +171,7 @@ export interface EncryptedKeyOptions {
  */
 export function encryptedKey(options: EncryptedKeyOptions) {
 	const packageAddress = options.package ?? '@local-pkg/messaging';
-	const argumentsTypes = [
-		`${packageAddress}::encryption_history::EncryptionHistory`,
-		'u64',
-	] satisfies string[];
+	const argumentsTypes = [null, 'u64'] satisfies (string | null)[];
 	const parameterNames = ['self', 'version'];
 	return (tx: Transaction) =>
 		tx.moveCall({
@@ -204,9 +201,7 @@ export interface CurrentEncryptedKeyOptions {
  */
 export function currentEncryptedKey(options: CurrentEncryptedKeyOptions) {
 	const packageAddress = options.package ?? '@local-pkg/messaging';
-	const argumentsTypes = [
-		`${packageAddress}::encryption_history::EncryptionHistory`,
-	] satisfies string[];
+	const argumentsTypes = [null] satisfies (string | null)[];
 	const parameterNames = ['self'];
 	return (tx: Transaction) =>
 		tx.moveCall({

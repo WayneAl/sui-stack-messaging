@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Signer } from '@mysten/sui/cryptography';
-import type { ClientWithCoreApi } from '@mysten/sui/experimental';
+import type { ClientWithCoreApi } from '@mysten/sui/client';
 import type { TransactionArgument } from '@mysten/sui/transactions';
 
 // === Package Configuration ===
