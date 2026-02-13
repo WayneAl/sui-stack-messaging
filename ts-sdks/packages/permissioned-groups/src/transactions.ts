@@ -15,6 +15,8 @@ import type {
 	RemoveMemberCallOptions,
 	RevokePermissionCallOptions,
 	RevokePermissionsCallOptions,
+	SetSuinsReverseLookupCallOptions,
+	UnsetSuinsReverseLookupCallOptions,
 } from './types.js';
 
 export interface PermissionedGroupsTransactionsOptions {
@@ -138,6 +140,28 @@ export class PermissionedGroupsTransactions {
 	objectRemoveMember(options: ObjectRemoveMemberCallOptions): Transaction {
 		const tx = new Transaction();
 		tx.add(this.#call.objectRemoveMember(options));
+		return tx;
+	}
+
+	// === SuiNS Reverse Lookup Functions ===
+
+	/**
+	 * Creates a Transaction that sets a SuiNS reverse lookup name on the group.
+	 * Requires UIDAccessor permission.
+	 */
+	setSuinsReverseLookup(options: SetSuinsReverseLookupCallOptions): Transaction {
+		const tx = new Transaction();
+		tx.add(this.#call.setSuinsReverseLookup(options));
+		return tx;
+	}
+
+	/**
+	 * Creates a Transaction that unsets the SuiNS reverse lookup name on the group.
+	 * Requires UIDAccessor permission.
+	 */
+	unsetSuinsReverseLookup(options: UnsetSuinsReverseLookupCallOptions): Transaction {
+		const tx = new Transaction();
+		tx.add(this.#call.unsetSuinsReverseLookup(options));
 		return tx;
 	}
 }
