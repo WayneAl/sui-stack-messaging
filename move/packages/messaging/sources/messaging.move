@@ -46,8 +46,8 @@ use suins::suins::SuiNS;
 
 /// Caller lacks the required permission for the operation.
 const ENotPermitted: u64 = 0;
-/// Operation is not yet implemented.
-const ENotImplemented: u64 = 1;
+/// The group is archived and cannot be mutated.
+const EGroupArchived: u64 = 1;
 
 // === Witnesses ===
 
@@ -247,6 +247,7 @@ public fun rotate_encryption_key(
     ctx: &TxContext,
 ) {
     version.validate_version();
+    assert!(!group.is_archived(), EGroupArchived);
     assert!(group.has_permission<Messaging, EncryptionKeyRotator>(ctx.sender()), ENotPermitted);
     encryption_history.rotate_key(new_encrypted_dek);
 }
@@ -386,22 +387,6 @@ public fun remove_group_data(
     assert!(group.has_permission<Messaging, MetadataAdmin>(ctx.sender()), ENotPermitted);
     let m = group_manager::borrow_metadata_mut<Messaging>(group_manager, group);
     m.remove_data(key)
-}
-
-// === Archive (Stub) ===
-
-/// Archives a messaging group.
-/// TODO: Full implementation deferred — open design questions about:
-/// - Should archived groups still support Seal decryption?
-/// - Destroy + ArchivedGroup vs freeze-in-place with marker?
-/// - Dynamic field cleanup strategy
-entry fun archive_group(
-    _version: &Version,
-    _group_manager: &GroupManager,
-    _group: PermissionedGroup<Messaging>,
-    _ctx: &mut TxContext,
-) {
-    abort ENotImplemented
 }
 
 /// Grants all messaging permissions to a member.

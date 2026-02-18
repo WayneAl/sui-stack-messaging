@@ -562,11 +562,9 @@ fun destroy_returns_components() {
     let mut ts = ts::begin(ALICE);
 
     ts.next_tx(ALICE);
-    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+    let group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
 
-    // Grant Destroyer to Alice
-    group.grant_permission<TestWitness, Destroyer>(ALICE, ts.ctx());
-
+    // Alice already has Destroyer (auto-granted at creation)
     let (permissions, admin_count, creator) = group.destroy<TestWitness>(ts.ctx());
 
     assert_eq!(admin_count, 1);
@@ -583,9 +581,15 @@ fun destroy_without_destroyer_aborts() {
     let mut ts = ts::begin(ALICE);
 
     ts.next_tx(ALICE);
-    let group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
 
-    // Alice has PermissionsAdmin + ExtensionPermissionsAdmin but NOT Destroyer
+    // Grant Bob only CustomPermission (no Destroyer)
+    group.grant_permission<TestWitness, CustomPermission>(BOB, ts.ctx());
+    transfer::public_share_object(group);
+
+    // Bob tries to destroy — should fail (no Destroyer permission)
+    ts.next_tx(BOB);
+    let group = ts.take_shared<PermissionedGroup<TestWitness>>();
     let (_permissions, _admin_count, _creator) = group.destroy<TestWitness>(ts.ctx());
 
     abort
@@ -619,19 +623,16 @@ fun permissions_table_destroy_empty_succeeds() {
     ts.next_tx(ALICE);
     let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
 
-    // Grant Destroyer to Alice, then destroy group to get the PermissionsTable
-    group.grant_permission<TestWitness, Destroyer>(ALICE, ts.ctx());
-
     // Remove all members first (Alice is the only one, but she has PermissionsAdmin
     // so we need another admin first)
     group.grant_permission<TestWitness, PermissionsAdmin>(BOB, ts.ctx());
+    group.grant_permission<TestWitness, Destroyer>(BOB, ts.ctx());
     group.remove_member<TestWitness>(ALICE, ts.ctx());
     transfer::public_share_object(group);
 
-    // Bob destroys the group (he needs Destroyer too)
+    // Bob destroys the group (he has Destroyer)
     ts.next_tx(BOB);
-    let mut group = ts.take_shared<PermissionedGroup<TestWitness>>();
-    group.grant_permission<TestWitness, Destroyer>(BOB, ts.ctx());
+    let group = ts.take_shared<PermissionedGroup<TestWitness>>();
     let (mut permissions, _admin_count, _creator) = group.destroy<TestWitness>(ts.ctx());
 
     // Remove Bob from the permissions table
@@ -648,16 +649,146 @@ fun permissions_table_destroy_empty_aborts_when_not_empty() {
     let mut ts = ts::begin(ALICE);
 
     ts.next_tx(ALICE);
-    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+    let group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
 
-    // Grant Destroyer to Alice
-    group.grant_permission<TestWitness, Destroyer>(ALICE, ts.ctx());
-
-    // Destroy group — Alice is still a member so table is not empty
+    // Alice already has Destroyer (auto-granted). Destroy group — Alice is still a member.
     let (permissions, _admin_count, _creator) = group.destroy<TestWitness>(ts.ctx());
 
     // Should abort because table still has Alice
     permissions.destroy_empty();
 
     abort
+}
+
+// === archive tests ===
+
+#[test]
+fun archive_sets_marker() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+
+    // Alice already has Destroyer (auto-granted at creation)
+    assert!(!group.is_archived());
+    group.archive<TestWitness>(ts.ctx());
+    assert!(group.is_archived());
+
+    destroy(group);
+    ts.end();
+}
+
+#[test, expected_failure(abort_code = permissioned_group::ENotPermitted)]
+fun archive_without_destroyer_aborts() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+
+    // Grant Bob only CustomPermission (no Destroyer)
+    group.grant_permission<TestWitness, CustomPermission>(BOB, ts.ctx());
+    transfer::public_share_object(group);
+
+    // Bob tries to archive — should fail (no Destroyer permission)
+    ts.next_tx(BOB);
+    let mut group = ts.take_shared<PermissionedGroup<TestWitness>>();
+    group.archive<TestWitness>(ts.ctx());
+
+    abort
+}
+
+#[test, expected_failure(abort_code = permissioned_group::EGroupArchived)]
+fun archive_already_archived_aborts() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+
+    group.archive<TestWitness>(ts.ctx());
+    // Archive again — should fail
+    group.archive<TestWitness>(ts.ctx());
+
+    abort
+}
+
+#[test, expected_failure(abort_code = permissioned_group::EGroupArchived)]
+fun grant_permission_on_archived_group_aborts() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+    group.archive<TestWitness>(ts.ctx());
+
+    // Try to grant — should fail
+    group.grant_permission<TestWitness, CustomPermission>(BOB, ts.ctx());
+
+    abort
+}
+
+#[test, expected_failure(abort_code = permissioned_group::EGroupArchived)]
+fun revoke_permission_on_archived_group_aborts() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+    group.grant_permission<TestWitness, CustomPermission>(BOB, ts.ctx());
+    group.archive<TestWitness>(ts.ctx());
+
+    // Try to revoke — should fail
+    group.revoke_permission<TestWitness, CustomPermission>(BOB, ts.ctx());
+
+    abort
+}
+
+#[test, expected_failure(abort_code = permissioned_group::EGroupArchived)]
+fun remove_member_on_archived_group_aborts() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+    group.grant_permission<TestWitness, CustomPermission>(BOB, ts.ctx());
+    group.archive<TestWitness>(ts.ctx());
+
+    // Try to remove member — should fail
+    group.remove_member<TestWitness>(BOB, ts.ctx());
+
+    abort
+}
+
+#[test, expected_failure(abort_code = permissioned_group::EGroupArchived)]
+fun destroy_archived_group_aborts() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+    group.archive<TestWitness>(ts.ctx());
+
+    // Try to destroy — should fail (archived groups cannot be destroyed)
+    let (_permissions, _admin_count, _creator) = group.destroy<TestWitness>(ts.ctx());
+
+    abort
+}
+
+#[test]
+fun archived_group_reads_still_work() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+    group.grant_permission<TestWitness, CustomPermission>(BOB, ts.ctx());
+    group.archive<TestWitness>(ts.ctx());
+
+    // All read operations should still work
+    assert!(group.has_permission<TestWitness, PermissionsAdmin>(ALICE));
+    assert!(group.has_permission<TestWitness, Destroyer>(ALICE));
+    assert!(group.has_permission<TestWitness, CustomPermission>(BOB));
+    assert!(group.is_member(ALICE));
+    assert!(group.is_member(BOB));
+    assert!(!group.is_member(CHARLIE));
+    assert_eq!(group.creator<TestWitness>(), ALICE);
+    assert_eq!(group.permissions_admin_count<TestWitness>(), 1);
+    assert!(group.is_archived());
+
+    destroy(group);
+    ts.end();
 }
