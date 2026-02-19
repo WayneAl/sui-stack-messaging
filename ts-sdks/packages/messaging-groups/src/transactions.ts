@@ -5,9 +5,13 @@ import { Transaction } from '@mysten/sui/transactions';
 
 import type { MessagingGroupsCall } from './call.js';
 import type {
+	ArchiveGroupCallOptions,
 	CreateGroupCallOptions,
+	InsertGroupDataCallOptions,
 	LeaveCallOptions,
+	RemoveGroupDataCallOptions,
 	RotateEncryptionKeyCallOptions,
+	SetGroupNameCallOptions,
 	SetSuinsReverseLookupCallOptions,
 	UnsetSuinsReverseLookupCallOptions,
 } from './types.js';
@@ -27,6 +31,7 @@ export interface MessagingGroupsTransactionsOptions {
  * ```ts
  * // For use with dapp-kit's signAndExecuteTransaction
  * const tx = client.messaging.tx.createAndShareGroup({
+ *   name: 'My Group',
  *   initialMembers: ['0x...'],
  * });
  * signAndExecuteTransaction({ transaction: tx });
@@ -45,7 +50,7 @@ export class MessagingGroupsTransactions {
 	 * Creates a Transaction that creates a new messaging group.
 	 * Returns a tuple of (PermissionedGroup<Messaging>, EncryptionHistory).
 	 */
-	createGroup(options?: CreateGroupCallOptions): Transaction {
+	createGroup(options: CreateGroupCallOptions): Transaction {
 		const tx = new Transaction();
 		tx.add(this.#call.createGroup(options));
 		return tx;
@@ -54,7 +59,7 @@ export class MessagingGroupsTransactions {
 	/**
 	 * Creates a Transaction that creates a new messaging group and shares both objects.
 	 */
-	createAndShareGroup(options?: CreateGroupCallOptions): Transaction {
+	createAndShareGroup(options: CreateGroupCallOptions): Transaction {
 		const tx = new Transaction();
 		tx.add(this.#call.createAndShareGroup(options));
 		return tx;
@@ -71,6 +76,18 @@ export class MessagingGroupsTransactions {
 		return tx;
 	}
 
+	// === Group Lifecycle Functions ===
+
+	/**
+	 * Creates a Transaction that permanently archives a messaging group.
+	 * Requires `PermissionsAdmin` permission.
+	 */
+	archiveGroup(options: ArchiveGroupCallOptions): Transaction {
+		const tx = new Transaction();
+		tx.add(this.#call.archiveGroup(options));
+		return tx;
+	}
+
 	/**
 	 * Creates a Transaction that removes the sender from a messaging group.
 	 */
@@ -80,11 +97,43 @@ export class MessagingGroupsTransactions {
 		return tx;
 	}
 
+	// === Metadata Functions ===
+
+	/**
+	 * Creates a Transaction that sets the group name.
+	 * Requires `MetadataAdmin` permission.
+	 */
+	setGroupName(options: SetGroupNameCallOptions): Transaction {
+		const tx = new Transaction();
+		tx.add(this.#call.setGroupName(options));
+		return tx;
+	}
+
+	/**
+	 * Creates a Transaction that inserts a key-value pair into the group's metadata.
+	 * Requires `MetadataAdmin` permission.
+	 */
+	insertGroupData(options: InsertGroupDataCallOptions): Transaction {
+		const tx = new Transaction();
+		tx.add(this.#call.insertGroupData(options));
+		return tx;
+	}
+
+	/**
+	 * Creates a Transaction that removes a key-value pair from the group's metadata.
+	 * Requires `MetadataAdmin` permission.
+	 */
+	removeGroupData(options: RemoveGroupDataCallOptions): Transaction {
+		const tx = new Transaction();
+		tx.add(this.#call.removeGroupData(options));
+		return tx;
+	}
+
 	// === SuiNS Reverse Lookup Functions ===
 
 	/**
 	 * Creates a Transaction that sets a SuiNS reverse lookup on a group.
-	 * Requires `ExtensionPermissionsAdmin` permission.
+	 * Requires `SuiNsAdmin` permission.
 	 */
 	setSuinsReverseLookup(options: SetSuinsReverseLookupCallOptions): Transaction {
 		const tx = new Transaction();
@@ -94,7 +143,7 @@ export class MessagingGroupsTransactions {
 
 	/**
 	 * Creates a Transaction that unsets a SuiNS reverse lookup on a group.
-	 * Requires `ExtensionPermissionsAdmin` permission.
+	 * Requires `SuiNsAdmin` permission.
 	 */
 	unsetSuinsReverseLookup(options: UnsetSuinsReverseLookupCallOptions): Transaction {
 		const tx = new Transaction();

@@ -137,6 +137,8 @@ export interface CreateGroupCallOptions {
 	 * Generated internally if omitted.
 	 */
 	uuid?: string;
+	/** Human-readable group name. */
+	name: string;
 	/**
 	 * Addresses to grant MessagingReader permission on creation.
 	 * The creator is automatically granted all permissions and should not be included.
@@ -184,6 +186,58 @@ export type RotateEncryptionKeyOptions = RotateEncryptionKeyCallOptions & {
 /** Options for leaving a group (imperative) */
 export interface LeaveOptions extends LeaveCallOptions {
 	/** Signer to execute the transaction */
+	signer: Signer;
+}
+
+/** Options for archiving a group (call-level, no signer). */
+export interface ArchiveGroupCallOptions {
+	/** Object ID of the PermissionedGroup<Messaging> */
+	groupId: string;
+}
+
+/** Options for setting the group name (call-level, no signer). */
+export interface SetGroupNameCallOptions {
+	/** Object ID of the PermissionedGroup<Messaging> */
+	groupId: string;
+	/** The new human-readable name for the group */
+	name: string;
+}
+
+/** Options for inserting a key-value pair into group metadata (call-level, no signer). */
+export interface InsertGroupDataCallOptions {
+	/** Object ID of the PermissionedGroup<Messaging> */
+	groupId: string;
+	/** The metadata key */
+	key: string;
+	/** The metadata value */
+	value: string;
+}
+
+/** Options for removing a key-value pair from group metadata (call-level, no signer). */
+export interface RemoveGroupDataCallOptions {
+	/** Object ID of the PermissionedGroup<Messaging> */
+	groupId: string;
+	/** The metadata key to remove */
+	key: string;
+}
+
+/** Options for archiving a group (imperative, with signer). */
+export interface ArchiveGroupOptions extends ArchiveGroupCallOptions {
+	signer: Signer;
+}
+
+/** Options for setting the group name (imperative, with signer). */
+export interface SetGroupNameOptions extends SetGroupNameCallOptions {
+	signer: Signer;
+}
+
+/** Options for inserting group data (imperative, with signer). */
+export interface InsertGroupDataOptions extends InsertGroupDataCallOptions {
+	signer: Signer;
+}
+
+/** Options for removing group data (imperative, with signer). */
+export interface RemoveGroupDataOptions extends RemoveGroupDataCallOptions {
 	signer: Signer;
 }
 

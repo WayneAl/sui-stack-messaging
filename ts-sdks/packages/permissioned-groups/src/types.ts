@@ -184,6 +184,33 @@ export interface LeaveCallOptions {
 	groupId: string | TransactionArgument;
 }
 
+/** Options for pausing a group */
+export interface PauseCallOptions {
+	/** Object ID or TransactionArgument for the PermissionedGroup */
+	groupId: string | TransactionArgument;
+}
+
+/** Options for unpausing a group */
+export interface UnpauseCallOptions {
+	/** Object ID or TransactionArgument for the PermissionedGroup */
+	groupId: string | TransactionArgument;
+	/** Object ID or TransactionArgument for the UnpauseCap */
+	unpauseCapId: string | TransactionArgument;
+}
+
+/**
+ * Options for deleting a group.
+ *
+ * NOTE: `delete` returns a tuple `(PermissionsTable, u64, address)` from Move.
+ * There is no high-level imperative variant — callers must compose this with
+ * additional PTB steps (e.g., `permissions_table::destroy_empty`) in the
+ * extending contract or their own transaction.
+ */
+export interface DeleteCallOptions {
+	/** Object ID or TransactionArgument for the PermissionedGroup */
+	groupId: string | TransactionArgument;
+}
+
 // === Batch/Convenience Imperative Options ===
 
 /** Options for granting multiple permissions (imperative) */
@@ -210,6 +237,12 @@ export interface LeaveOptions extends LeaveCallOptions {
 	signer: Signer;
 }
 
+/** Options for unpausing a group (imperative) */
+export interface UnpauseOptions extends UnpauseCallOptions {
+	/** Signer to execute the transaction */
+	signer: Signer;
+}
+
 // === View Options (use string IDs for devInspect) ===
 
 /** Options for checking if a member has a specific permission */
@@ -228,4 +261,10 @@ export interface IsMemberViewOptions {
 	groupId: string;
 	/** Address to check */
 	member: string;
+}
+
+/** Options for checking if a group is paused */
+export interface IsPausedViewOptions {
+	/** Object ID of the PermissionedGroup */
+	groupId: string;
 }

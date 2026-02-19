@@ -10,8 +10,9 @@
  * as a child of `PermissionedGroup` for easy discoverability.
  */
 
-import { MoveStruct } from '../utils/index.js';
+import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.js';
 import { bcs } from '@mysten/sui/bcs';
+import { type Transaction } from '@mysten/sui/transactions';
 const $moduleName = '@local-pkg/permissioned-groups::permissions_table';
 export const PermissionsTable = new MoveStruct({
 	name: `${$moduleName}::PermissionsTable`,
@@ -20,3 +21,29 @@ export const PermissionsTable = new MoveStruct({
 		length: bcs.u64(),
 	},
 });
+export interface DestroyEmptyArguments {
+	self: RawTransactionArgument<string>;
+}
+export interface DestroyEmptyOptions {
+	package?: string;
+	arguments: DestroyEmptyArguments | [self: RawTransactionArgument<string>];
+}
+/**
+ * Destroys an empty PermissionsTable.
+ *
+ * # Aborts
+ *
+ * - `EPermissionsTableNotEmpty`: if the table still has members
+ */
+export function destroyEmpty(options: DestroyEmptyOptions) {
+	const packageAddress = options.package ?? '@local-pkg/permissioned-groups';
+	const argumentsTypes = [null] satisfies (string | null)[];
+	const parameterNames = ['self'];
+	return (tx: Transaction) =>
+		tx.moveCall({
+			package: packageAddress,
+			module: 'permissions_table',
+			function: 'destroy_empty',
+			arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+		});
+}

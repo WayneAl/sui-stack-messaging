@@ -9,8 +9,13 @@ import {
 	PermissionsAdmin,
 	ExtensionPermissionsAdmin,
 	ObjectAdmin,
+	GroupDeleter,
+	PausedMarker,
 	GroupCreated,
 	GroupDerived,
+	GroupDeleted,
+	GroupPaused,
+	GroupUnpaused,
 	MemberAdded,
 	MemberRemoved,
 	PermissionedGroup,
@@ -22,6 +27,8 @@ export type ParsedPermissionedGroup = ReturnType<typeof PermissionedGroup>['$inf
 export type ParsedPermissionsAdmin = (typeof PermissionsAdmin)['$inferType'];
 export type ParsedExtensionPermissionsAdmin = (typeof ExtensionPermissionsAdmin)['$inferType'];
 export type ParsedObjectAdmin = (typeof ObjectAdmin)['$inferType'];
+export type ParsedGroupDeleter = (typeof GroupDeleter)['$inferType'];
+export type ParsedPausedMarker = (typeof PausedMarker)['$inferType'];
 export type ParsedGroupCreated = ReturnType<typeof GroupCreated>['$inferType'];
 export type ParsedGroupDerived<DerivationKey = unknown> = {
 	group_id: string;
@@ -29,6 +36,9 @@ export type ParsedGroupDerived<DerivationKey = unknown> = {
 	parent_id: string;
 	derivation_key: DerivationKey;
 };
+export type ParsedGroupDeleted = ReturnType<typeof GroupDeleted>['$inferType'];
+export type ParsedGroupPaused = ReturnType<typeof GroupPaused>['$inferType'];
+export type ParsedGroupUnpaused = ReturnType<typeof GroupUnpaused>['$inferType'];
 export type ParsedMemberAdded = ReturnType<typeof MemberAdded>['$inferType'];
 export type ParsedMemberRemoved = ReturnType<typeof MemberRemoved>['$inferType'];
 export type ParsedPermissionsGranted = ReturnType<typeof PermissionsGranted>['$inferType'];
@@ -64,10 +74,20 @@ export class PermissionedGroupsBCS {
 	readonly ExtensionPermissionsAdmin: BcsType<ParsedExtensionPermissionsAdmin, unknown>;
 	/** Core permission: grants raw &mut UID access via the actor-object pattern */
 	readonly ObjectAdmin: BcsType<ParsedObjectAdmin, unknown>;
+	/** Core permission: allows destroying/deleting the group */
+	readonly GroupDeleter: BcsType<ParsedGroupDeleter, unknown>;
+	/** Dynamic field marker set when a group is paused */
+	readonly PausedMarker: BcsType<ParsedPausedMarker, unknown>;
 	/** Main group struct containing membership and permission data */
 	readonly PermissionedGroup: BcsType<ParsedPermissionedGroup, unknown>;
 	/** Event emitted when a group is created */
 	readonly GroupCreated: BcsType<ParsedGroupCreated, unknown>;
+	/** Event emitted when a group is deleted */
+	readonly GroupDeleted: BcsType<ParsedGroupDeleted, unknown>;
+	/** Event emitted when a group is paused */
+	readonly GroupPaused: BcsType<ParsedGroupPaused, unknown>;
+	/** Event emitted when a group is unpaused */
+	readonly GroupUnpaused: BcsType<ParsedGroupUnpaused, unknown>;
 	/** Event emitted when a member is added to a group */
 	readonly MemberAdded: BcsType<ParsedMemberAdded, unknown>;
 	/** Event emitted when a member is removed from a group */
@@ -90,8 +110,13 @@ export class PermissionedGroupsBCS {
 		this.PermissionsAdmin = this.#withPackageId(PermissionsAdmin);
 		this.ExtensionPermissionsAdmin = this.#withPackageId(ExtensionPermissionsAdmin);
 		this.ObjectAdmin = this.#withPackageId(ObjectAdmin);
+		this.GroupDeleter = this.#withPackageId(GroupDeleter);
+		this.PausedMarker = this.#withPackageId(PausedMarker);
 		this.PermissionedGroup = this.#withPackageId(PermissionedGroup(this.#phantomWitnessBcs));
 		this.GroupCreated = this.#withPackageId(GroupCreated(this.#phantomWitnessBcs));
+		this.GroupDeleted = this.#withPackageId(GroupDeleted(this.#phantomWitnessBcs));
+		this.GroupPaused = this.#withPackageId(GroupPaused(this.#phantomWitnessBcs));
+		this.GroupUnpaused = this.#withPackageId(GroupUnpaused(this.#phantomWitnessBcs));
 		this.MemberAdded = this.#withPackageId(MemberAdded(this.#phantomWitnessBcs));
 		this.MemberRemoved = this.#withPackageId(MemberRemoved(this.#phantomWitnessBcs));
 		this.PermissionsGranted = this.#withPackageId(PermissionsGranted(this.#phantomWitnessBcs));

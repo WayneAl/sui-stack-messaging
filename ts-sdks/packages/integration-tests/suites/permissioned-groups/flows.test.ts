@@ -3,10 +3,10 @@
 
 import { describe, it, expect, inject, beforeAll } from 'vitest';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
-import { requestSuiFromFaucetV2 } from '@mysten/sui/faucet';
 import { permissionTypes } from '@mysten/permissioned-groups';
 
 import { createPermissionedGroupsClient } from '../../src/helpers/index.js';
+import { createFundedAccount } from '../../src/fixtures/index.js';
 
 describe('Full Flows', () => {
 	let client: ReturnType<typeof createPermissionedGroupsClient>;
@@ -79,9 +79,8 @@ describe('Full Flows', () => {
 		it('should grant permission, verify it exists, revoke it, verify it is gone', async () => {
 			const groupId = await createAndShareGroup();
 
-			const memberKeypair = new Ed25519Keypair();
-			const memberAddress = memberKeypair.getPublicKey().toSuiAddress();
-			await requestSuiFromFaucetV2({ host: faucetUrl, recipient: memberAddress });
+			const member = await createFundedAccount({ faucetUrl });
+			const memberAddress = member.address;
 
 			const packageId = inject('publishedPackages')['permissioned-groups'].packageId;
 			const permissionType = permissionTypes(packageId).PermissionsAdmin;
@@ -122,9 +121,8 @@ describe('Full Flows', () => {
 		it('should auto-remove member when last permission is revoked', async () => {
 			const groupId = await createAndShareGroup();
 
-			const memberKeypair = new Ed25519Keypair();
-			const memberAddress = memberKeypair.getPublicKey().toSuiAddress();
-			await requestSuiFromFaucetV2({ host: faucetUrl, recipient: memberAddress });
+			const member = await createFundedAccount({ faucetUrl });
+			const memberAddress = member.address;
 
 			const packageId = inject('publishedPackages')['permissioned-groups'].packageId;
 			const permissionType = permissionTypes(packageId).PermissionsAdmin;
@@ -150,13 +148,46 @@ describe('Full Flows', () => {
 		});
 	});
 
+	describe('GroupDeleter permission', () => {
+		it('should grant GroupDeleter, verify it, revoke it, verify it is gone', async () => {
+			const groupId = await createAndShareGroup();
+
+			const member = await createFundedAccount({ faucetUrl });
+			const memberAddress = member.address;
+
+			const packageId = inject('publishedPackages')['permissioned-groups'].packageId;
+			const permissionType = permissionTypes(packageId).GroupDeleter;
+
+			await client.groups.grantPermission({
+				groupId,
+				member: memberAddress,
+				permissionType,
+				signer: adminKeypair,
+			});
+
+			expect(
+				await client.groups.view.hasPermission({ groupId, member: memberAddress, permissionType }),
+			).toBe(true);
+
+			await client.groups.revokePermission({
+				groupId,
+				member: memberAddress,
+				permissionType,
+				signer: adminKeypair,
+			});
+
+			expect(
+				await client.groups.view.hasPermission({ groupId, member: memberAddress, permissionType }),
+			).toBe(false);
+		});
+	});
+
 	describe('remove member', () => {
 		it('should remove a member and verify they are no longer a member', async () => {
 			const groupId = await createAndShareGroup();
 
-			const memberKeypair = new Ed25519Keypair();
-			const memberAddress = memberKeypair.getPublicKey().toSuiAddress();
-			await requestSuiFromFaucetV2({ host: faucetUrl, recipient: memberAddress });
+			const member = await createFundedAccount({ faucetUrl });
+			const memberAddress = member.address;
 
 			const packageId = inject('publishedPackages')['permissioned-groups'].packageId;
 			await client.groups.grantPermission({

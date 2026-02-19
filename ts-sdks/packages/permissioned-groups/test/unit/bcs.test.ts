@@ -44,11 +44,23 @@ describe('PermissionedGroupsBCS', () => {
 			expect(bcsTypes.PermissionedGroup.name).not.toContain(LOCAL_PACKAGE_ALIAS);
 		});
 
+		it('should scope GroupDeleter and PausedMarker with package ID', () => {
+			const bcsTypes = createBCS();
+
+			expect(bcsTypes.GroupDeleter.name).toContain(MOCK_PACKAGE_ID);
+			expect(bcsTypes.GroupDeleter.name).not.toContain(LOCAL_PACKAGE_ALIAS);
+			expect(bcsTypes.PausedMarker.name).toContain(MOCK_PACKAGE_ID);
+			expect(bcsTypes.PausedMarker.name).not.toContain(LOCAL_PACKAGE_ALIAS);
+		});
+
 		it('should scope event types with package ID', () => {
 			const bcsTypes = createBCS();
 
 			for (const eventType of [
 				bcsTypes.GroupCreated,
+				bcsTypes.GroupDeleted,
+				bcsTypes.GroupPaused,
+				bcsTypes.GroupUnpaused,
 				bcsTypes.MemberAdded,
 				bcsTypes.MemberRemoved,
 				bcsTypes.PermissionsGranted,
@@ -66,8 +78,13 @@ describe('PermissionedGroupsBCS', () => {
 				bcsTypes.PermissionsAdmin,
 				bcsTypes.ExtensionPermissionsAdmin,
 				bcsTypes.ObjectAdmin,
+				bcsTypes.GroupDeleter,
+				bcsTypes.PausedMarker,
 				bcsTypes.PermissionedGroup,
 				bcsTypes.GroupCreated,
+				bcsTypes.GroupDeleted,
+				bcsTypes.GroupPaused,
+				bcsTypes.GroupUnpaused,
 				bcsTypes.MemberAdded,
 				bcsTypes.MemberRemoved,
 				bcsTypes.PermissionsGranted,

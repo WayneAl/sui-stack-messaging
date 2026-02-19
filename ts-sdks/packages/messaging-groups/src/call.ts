@@ -9,10 +9,14 @@ import type { MessagingGroupsDerive } from './derive.js';
 import { MessagingGroupsClientError } from './error.js';
 import type { SuinsConfig } from './constants.js';
 import type {
+	ArchiveGroupCallOptions,
 	CreateGroupCallOptions,
+	InsertGroupDataCallOptions,
 	LeaveCallOptions,
 	MessagingGroupsPackageConfig,
+	RemoveGroupDataCallOptions,
 	RotateEncryptionKeyCallOptions,
+	SetGroupNameCallOptions,
 	SetSuinsReverseLookupCallOptions,
 	ShareGroupCallOptions,
 	UnsetSuinsReverseLookupCallOptions,
@@ -41,6 +45,7 @@ export interface MessagingGroupsCallOptions {
  * ```ts
  * const tx = new Transaction();
  * tx.add(client.messaging.call.createAndShareGroup({
+ *   name: 'My Group',
  *   initialMembers: ['0x...', '0x...'],
  * }));
  * ```
@@ -74,10 +79,11 @@ export class MessagingGroupsCall {
 	 *
 	 * Returns a tuple of `(PermissionedGroup<Messaging>, EncryptionHistory)`.
 	 */
-	createGroup(options?: CreateGroupCallOptions) {
+	createGroup(options: CreateGroupCallOptions) {
 		return async (tx: Transaction) => {
 			const { uuid, encryptedDek } = await this.#encryption.generateGroupDEK(options?.uuid);
 			const initialMembers = this.#buildAddressVecSet(tx, options?.initialMembers ?? []);
+			const groupManagerId = this.#derive.groupManagerId();
 
 			return tx.add(
 				messaging.createGroup({
@@ -85,6 +91,8 @@ export class MessagingGroupsCall {
 					arguments: {
 						version: this.#packageConfig.versionId,
 						namespace: this.#packageConfig.namespaceId,
+						groupManager: groupManagerId,
+						name: options.name,
 						uuid,
 						initialEncryptedDek: Array.from(encryptedDek),
 						initialMembers,
@@ -101,9 +109,10 @@ export class MessagingGroupsCall {
 	 * Internally generates a UUID (if not provided), derives the group ID,
 	 * and generates a Seal-encrypted DEK for the group's initial encryption key.
 	 */
-	createAndShareGroup(options?: CreateGroupCallOptions) {
+	createAndShareGroup(options: CreateGroupCallOptions) {
 		return async (tx: Transaction) => {
 			const { uuid, encryptedDek } = await this.#encryption.generateGroupDEK(options?.uuid);
+			const groupManagerId = this.#derive.groupManagerId();
 
 			return tx.add(
 				messaging.createAndShareGroup({
@@ -111,6 +120,8 @@ export class MessagingGroupsCall {
 					arguments: {
 						version: this.#packageConfig.versionId,
 						namespace: this.#packageConfig.namespaceId,
+						groupManager: groupManagerId,
+						name: options.name,
 						uuid,
 						initialEncryptedDek: Array.from(encryptedDek),
 						initialMembers: options?.initialMembers ?? [],
@@ -127,7 +138,7 @@ export class MessagingGroupsCall {
 	 * @example
 	 * ```ts
 	 * const tx = new Transaction();
-	 * const [group, encryptionHistory] = tx.add(client.messaging.call.createGroup());
+	 * const [group, encryptionHistory] = tx.add(client.messaging.call.createGroup({ name: 'My Group' }));
 	 * tx.add(client.messaging.call.shareGroup({ group, encryptionHistory }));
 	 * ```
 	 */
@@ -181,6 +192,29 @@ export class MessagingGroupsCall {
 		};
 	}
 
+	// === Group Lifecycle Functions ===
+
+	/**
+	 * Permanently archives a messaging group.
+	 * Requires `PermissionsAdmin` permission.
+	 *
+	 * Pauses the group and burns the `UnpauseCap`, making it impossible to unpause.
+	 * After this call, `is_paused()` returns `true` on-chain and all mutations are blocked.
+	 */
+	archiveGroup(options: ArchiveGroupCallOptions) {
+		return (tx: Transaction) => {
+			return tx.add(
+				messaging.archiveGroup({
+					package: this.#packageConfig.latestPackageId,
+					arguments: {
+						version: this.#packageConfig.versionId,
+						group: options.groupId,
+					},
+				}),
+			);
+		};
+	}
+
 	/**
 	 * Removes the transaction sender from a messaging group.
 	 *
@@ -204,13 +238,76 @@ export class MessagingGroupsCall {
 		};
 	}
 
+	// === Metadata Functions ===
+
+	/**
+	 * Sets the group name.
+	 * Requires `MetadataAdmin` permission.
+	 */
+	setGroupName(options: SetGroupNameCallOptions) {
+		return (tx: Transaction) => {
+			const groupManagerId = this.#derive.groupManagerId();
+			return tx.add(
+				messaging.setGroupName({
+					package: this.#packageConfig.latestPackageId,
+					arguments: {
+						groupManager: groupManagerId,
+						group: options.groupId,
+						name: options.name,
+					},
+				}),
+			);
+		};
+	}
+
+	/**
+	 * Inserts a key-value pair into the group's metadata data map.
+	 * Requires `MetadataAdmin` permission.
+	 */
+	insertGroupData(options: InsertGroupDataCallOptions) {
+		return (tx: Transaction) => {
+			const groupManagerId = this.#derive.groupManagerId();
+			return tx.add(
+				messaging.insertGroupData({
+					package: this.#packageConfig.latestPackageId,
+					arguments: {
+						groupManager: groupManagerId,
+						group: options.groupId,
+						key: options.key,
+						value: options.value,
+					},
+				}),
+			);
+		};
+	}
+
+	/**
+	 * Removes a key-value pair from the group's metadata data map.
+	 * Requires `MetadataAdmin` permission.
+	 */
+	removeGroupData(options: RemoveGroupDataCallOptions) {
+		return (tx: Transaction) => {
+			const groupManagerId = this.#derive.groupManagerId();
+			return tx.add(
+				messaging.removeGroupData({
+					package: this.#packageConfig.latestPackageId,
+					arguments: {
+						groupManager: groupManagerId,
+						group: options.groupId,
+						key: options.key,
+					},
+				}),
+			);
+		};
+	}
+
 	// === SuiNS Reverse Lookup Functions ===
 
 	/**
 	 * Sets a SuiNS reverse lookup on a messaging group.
-	 * Requires `ExtensionPermissionsAdmin` permission on the group.
+	 * Requires `SuiNsAdmin` permission on the group.
 	 *
-	 * Internally derives the `SuinsManager` singleton ID and uses the
+	 * Internally derives the `GroupManager` singleton ID and uses the
 	 * configured SuiNS shared object.
 	 *
 	 * @throws {MessagingGroupsClientError} if SuiNS config was not provided
@@ -218,12 +315,12 @@ export class MessagingGroupsCall {
 	setSuinsReverseLookup(options: SetSuinsReverseLookupCallOptions) {
 		const suinsConfig = this.#requireSuinsConfig();
 		return (tx: Transaction) => {
-			const suinsManagerId = this.#derive.suinsManagerId();
+			const groupManagerId = this.#derive.groupManagerId();
 			return tx.add(
 				messaging.setSuinsReverseLookup({
 					package: this.#packageConfig.latestPackageId,
 					arguments: {
-						suinsManager: suinsManagerId,
+						groupManager: groupManagerId,
 						group: options.groupId,
 						suins: suinsConfig.suinsObjectId,
 						domainName: options.domainName,
@@ -235,19 +332,19 @@ export class MessagingGroupsCall {
 
 	/**
 	 * Unsets a SuiNS reverse lookup on a messaging group.
-	 * Requires `ExtensionPermissionsAdmin` permission on the group.
+	 * Requires `SuiNsAdmin` permission on the group.
 	 *
 	 * @throws {MessagingGroupsClientError} if SuiNS config was not provided
 	 */
 	unsetSuinsReverseLookup(options: UnsetSuinsReverseLookupCallOptions) {
 		const suinsConfig = this.#requireSuinsConfig();
 		return (tx: Transaction) => {
-			const suinsManagerId = this.#derive.suinsManagerId();
+			const groupManagerId = this.#derive.groupManagerId();
 			return tx.add(
 				messaging.unsetSuinsReverseLookup({
 					package: this.#packageConfig.latestPackageId,
 					arguments: {
-						suinsManager: suinsManagerId,
+						groupManager: groupManagerId,
 						group: options.groupId,
 						suins: suinsConfig.suinsObjectId,
 					},

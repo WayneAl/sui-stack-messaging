@@ -4,10 +4,11 @@
 import { bcs } from '@mysten/sui/bcs';
 import { deriveDynamicFieldID, deriveObjectID } from '@mysten/sui/utils';
 
-import { PERMISSIONS_TABLE_DERIVATION_KEY } from './constants.js';
+import { PERMISSIONS_TABLE_DERIVATION_KEY, pausedMarkerType } from './constants.js';
 import type {
 	HasPermissionViewOptions,
 	IsMemberViewOptions,
+	IsPausedViewOptions,
 	PermissionedGroupsCompatibleClient,
 	PermissionedGroupsPackageConfig,
 } from './types.js';
@@ -56,9 +57,11 @@ export interface PermissionedGroupsViewOptions {
  */
 export class PermissionedGroupsView {
 	#client: PermissionedGroupsCompatibleClient;
+	#packageConfig: PermissionedGroupsPackageConfig;
 
 	constructor(options: PermissionedGroupsViewOptions) {
 		this.#client = options.client;
+		this.#packageConfig = options.packageConfig;
 	}
 
 	/**
@@ -129,5 +132,28 @@ export class PermissionedGroupsView {
 	async isMember(options: IsMemberViewOptions): Promise<boolean> {
 		const permissions = await this.#getMemberPermissions(options.groupId, options.member);
 		return permissions !== null;
+	}
+
+	/**
+	 * Checks if the group is currently paused.
+	 *
+	 * A group is paused when it has a `PausedMarker` dynamic field on its UID.
+	 * Paused groups reject all mutation calls.
+	 *
+	 * @param options.groupId - Object ID of the PermissionedGroup
+	 * @returns `true` if the group is paused, `false` otherwise
+	 */
+	async isPaused(options: IsPausedViewOptions): Promise<boolean> {
+		// PausedMarker is a unit struct with a single bool field (MoveTuple pattern).
+		// The key stored on-chain is `false` (the phantom bool value).
+		const keyBytes = bcs.bool().serialize(false).toBytes();
+		const markerType = pausedMarkerType(this.#packageConfig.originalPackageId);
+		const pausedFieldId = deriveDynamicFieldID(options.groupId, markerType, keyBytes);
+		try {
+			await this.#client.core.getObject({ objectId: pausedFieldId });
+			return true;
+		} catch {
+			return false;
+		}
 	}
 }

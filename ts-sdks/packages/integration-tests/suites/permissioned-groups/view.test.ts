@@ -3,10 +3,10 @@
 
 import { describe, it, expect, inject, beforeAll } from 'vitest';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
-import { requestSuiFromFaucetV2 } from '@mysten/sui/faucet';
 import { permissionTypes } from '@mysten/permissioned-groups';
 
 import { createPermissionedGroupsClient } from '../../src/helpers/index.js';
+import { createFundedAccount } from '../../src/fixtures/index.js';
 
 describe('PermissionedGroupsView', () => {
 	let suiClient: ReturnType<typeof createPermissionedGroupsClient>;
@@ -145,16 +145,10 @@ describe('PermissionedGroupsView', () => {
 
 		beforeAll(async () => {
 			const faucetPort = inject('faucetPort');
+			const faucetUrl = `http://localhost:${faucetPort}`;
 
-			// Create a new member and fund them
-			const newMemberKeypair = new Ed25519Keypair();
-			newMemberAddress = newMemberKeypair.getPublicKey().toSuiAddress();
-
-			// Fund the new member (needed for any future transactions they might do)
-			await requestSuiFromFaucetV2({
-				host: `http://localhost:${faucetPort}`,
-				recipient: newMemberAddress,
-			});
+			const newMember = await createFundedAccount({ faucetUrl });
+			newMemberAddress = newMember.address;
 
 			// Grant PermissionsAdmin permission to the new member using the client
 			await suiClient.groups.grantPermission({
