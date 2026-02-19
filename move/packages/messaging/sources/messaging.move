@@ -32,10 +32,13 @@ module messaging::messaging;
 use messaging::encryption_history::{Self, EncryptionHistory, EncryptionKeyRotator};
 use messaging::group_leaver::{Self, GroupLeaver};
 use messaging::group_manager::{Self, GroupManager};
-use messaging::metadata::{Self};
+use messaging::metadata;
 use messaging::version::Version;
 use permissioned_groups::permissioned_group::{
-    Self, PermissionedGroup, PermissionsAdmin, ObjectAdmin,
+    Self,
+    PermissionedGroup,
+    PermissionsAdmin,
+    ObjectAdmin
 };
 use std::string::String;
 use sui::package;
@@ -46,7 +49,7 @@ use suins::suins::SuiNS;
 
 /// Caller lacks the required permission for the operation.
 const ENotPermitted: u64 = 0;
-/// The group is archived and cannot be mutated.
+/// The group is archived (paused) and cannot be mutated.
 const EGroupArchived: u64 = 1;
 
 // === Witnesses ===
@@ -152,7 +155,8 @@ public fun create_group(
     let creator = ctx.sender();
     grant_all_messaging_permissions(&mut group, creator, ctx);
 
-    // Grant PermissionsAdmin to the GroupLeaver actor so it can remove members on behalf of callers.
+    // Grant PermissionsAdmin to the GroupLeaver actor so it can remove members on behalf of
+    // callers.
     // The address is derived deterministically from the namespace — no need to pass the object.
     let group_leaver_address = sui::derived_object::derive_address(
         object::id(namespace),
@@ -247,7 +251,7 @@ public fun rotate_encryption_key(
     ctx: &TxContext,
 ) {
     version.validate_version();
-    assert!(!group.is_archived(), EGroupArchived);
+    assert!(!group.is_paused(), EGroupArchived);
     assert!(group.has_permission<Messaging, EncryptionKeyRotator>(ctx.sender()), ENotPermitted);
     encryption_history.rotate_key(new_encrypted_dek);
 }
@@ -278,6 +282,32 @@ public fun leave(
     group_leaver::leave<Messaging>(group_leaver, group, ctx);
 }
 
+// === Archive Functions ===
+
+/// Permanently archives a messaging group.
+///
+/// Pauses the group and burns the `UnpauseCap`, making it impossible to unpause.
+/// After this call, `is_paused()` returns `true` and all mutations are blocked.
+///
+/// The caller must have `PermissionsAdmin` permission (enforced by `pause()`).
+///
+/// # Aborts
+/// - `ENotPermitted` (from `pause`): if caller doesn't have `PermissionsAdmin`
+/// - `EAlreadyPaused` (from `pause`): if the group is already paused
+///
+/// # Note
+/// Alternative to burning: `transfer::public_freeze_object(cap)` makes the cap immutable
+/// and un-passable by value, also preventing unpause without destroying the object.
+entry fun archive_group(
+    version: &Version,
+    group: &mut PermissionedGroup<Messaging>,
+    ctx: &mut TxContext,
+) {
+    version.validate_version();
+    let cap = group.pause<Messaging>(ctx);
+    cap.burn();
+}
+
 // === SuiNS Functions ===
 
 /// Sets a SuiNS reverse lookup on a messaging group.
@@ -300,10 +330,7 @@ public fun set_suins_reverse_lookup(
     domain_name: String,
     ctx: &TxContext,
 ) {
-    assert!(
-        group.has_permission<Messaging, SuiNsAdmin>(ctx.sender()),
-        ENotPermitted,
-    );
+    assert!(group.has_permission<Messaging, SuiNsAdmin>(ctx.sender()), ENotPermitted);
     group_manager::set_reverse_lookup<Messaging>(group_manager, group, suins, domain_name);
 }
 
@@ -325,10 +352,7 @@ public fun unset_suins_reverse_lookup(
     suins: &mut SuiNS,
     ctx: &TxContext,
 ) {
-    assert!(
-        group.has_permission<Messaging, SuiNsAdmin>(ctx.sender()),
-        ENotPermitted,
-    );
+    assert!(group.has_permission<Messaging, SuiNsAdmin>(ctx.sender()), ENotPermitted);
     group_manager::unset_reverse_lookup<Messaging>(group_manager, group, suins);
 }
 

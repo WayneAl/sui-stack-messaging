@@ -13,7 +13,7 @@
 ///   (e.g. SuiNS reverse lookup). Only accessible via the actor-object pattern
 ///   (`object_uid` / `object_uid_mut`), which forces extending contracts to explicitly
 ///   reason about the implications of mutating the group object.
-/// - `Destroyer`: Permission that allows archiving or destroying the group.
+/// - `GroupDeleter`: Permission that allows destroying the group via `delete()`.
 ///
 /// ## Permission Scoping
 ///
@@ -37,6 +37,7 @@
 module permissioned_groups::permissioned_group;
 
 use permissioned_groups::permissions_table::{Self, PermissionsTable};
+use permissioned_groups::unpause_cap::{Self, UnpauseCap};
 use std::type_name::{Self, TypeName};
 use sui::derived_object;
 use sui::dynamic_field;
@@ -53,8 +54,12 @@ const EMemberNotFound: u64 = 1;
 const ELastPermissionsAdmin: u64 = 2;
 /// A derived `PermissionedGroup` already exists for the given derivation key.
 const EPermissionedGroupAlreadyExists: u64 = 3;
-/// The group is archived and cannot be mutated.
-const EGroupArchived: u64 = 4;
+/// The group is paused and cannot be mutated.
+const EGroupPaused: u64 = 4;
+/// Attempted to pause a group that is already paused.
+const EAlreadyPaused: u64 = 5;
+/// The UnpauseCap was used on a group it does not belong to.
+const EGroupIdMismatch: u64 = 6;
 
 // === Constants ===
 const PERMISSIONS_TABLE_DERIVATION_KEY_BYTES: vector<u8> = b"permissions_table";
@@ -64,6 +69,7 @@ const PERMISSIONS_TABLE_DERIVATION_KEY_BYTES: vector<u8> = b"permissions_table";
 /// Permission to manage core permissions defined in the permissioned_groups package.
 /// Can manage: PermissionsAdmin, ExtensionPermissionsAdmin, ObjectAdmin.
 /// Cannot manage extension permissions (those from other packages).
+/// TODO: only give PermissionsAdmin to creator, maybe ExtensionPermissionAdmin as well
 public struct PermissionsAdmin() has drop;
 
 /// Permission to manage extension permissions defined in third-party packages.
@@ -75,9 +81,9 @@ public struct ExtensionPermissionsAdmin() has drop;
 /// Only accessible via the actor-object pattern; see `object_uid` / `object_uid_mut`.
 public struct ObjectAdmin() has drop;
 
-/// Permission that allows destroying the group via `destroy()`.
+/// Permission that allows deleting the group via `delete()`.
 /// Core permission — managed by `PermissionsAdmin`.
-public struct Destroyer() has drop;
+public struct GroupDeleter() has drop;
 
 // === Structs ===
 
@@ -93,6 +99,10 @@ public struct PermissionedGroup<phantom T: drop> has key, store {
     /// Original creator's address
     creator: address,
 }
+
+/// Dynamic field key; presence means the group is paused.
+/// Added by `pause()`, removed by `unpause()`.
+public struct PausedMarker() has copy, drop, store;
 
 // === Events ===
 
@@ -152,25 +162,25 @@ public struct PermissionsRevoked<phantom T> has copy, drop {
     permissions: vector<TypeName>,
 }
 
-/// Emitted when a PermissionedGroup is destroyed via `destroy`.
-public struct GroupDestroyed<phantom T> has copy, drop {
-    /// ID of the destroyed group.
+/// Emitted when a PermissionedGroup is deleted via `delete`.
+public struct GroupDeleted<phantom T> has copy, drop {
+    /// ID of the deleted group.
     group_id: ID,
-    /// Address of the caller who destroyed the group.
-    destroyer: address,
+    /// Address of the caller who deleted the group.
+    deleter: address,
 }
 
-/// Emitted when a PermissionedGroup is archived via `archive`.
-public struct GroupArchived<phantom T> has copy, drop {
-    /// ID of the archived group.
+/// Emitted when a PermissionedGroup is paused via `pause`.
+public struct GroupPaused<phantom T> has copy, drop {
     group_id: ID,
-    /// Address of the caller who archived the group.
-    archived_by: address,
+    paused_by: address,
 }
 
-/// Dynamic field key for the archive marker on a PermissionedGroup.
-/// Presence of this field means the group is archived and cannot be mutated.
-public struct ArchiveMarker() has copy, drop, store;
+/// Emitted when a PermissionedGroup is unpaused via `unpause`.
+public struct GroupUnpaused<phantom T> has copy, drop {
+    group_id: ID,
+    unpaused_by: address,
+}
 
 // === Public Functions ===
 
@@ -240,52 +250,65 @@ public fun new_derived<T: drop, DerivationKey: copy + drop + store>(
     internal_new!(group_uid, creator)
 }
 
-/// Destroys a PermissionedGroup, returning its components.
-/// Checks that `ctx.sender()` has `Destroyer` permission.
+/// Deletes a PermissionedGroup, returning its components.
+/// Checks that `ctx.sender()` has `GroupDeleter` permission.
 /// Caller must extract any dynamic fields BEFORE calling this (the UID is deleted).
 ///
 /// # Type Parameters
 /// - `T`: Package witness type
 ///
 /// # Parameters
-/// - `self`: The PermissionedGroup to destroy (by value)
+/// - `self`: The PermissionedGroup to delete (by value)
 /// - `ctx`: Transaction context
 ///
 /// # Returns
 /// Tuple of (PermissionsTable, permissions_admin_count, creator)
 ///
 /// # Aborts
-/// - `ENotPermitted`: if caller doesn't have `Destroyer` permission
-public fun destroy<T: drop>(self: PermissionedGroup<T>, ctx: &TxContext): (PermissionsTable, u64, address) {
-    assert!(self.has_permission<T, Destroyer>(ctx.sender()), ENotPermitted);
-    assert!(!self.is_archived(), EGroupArchived);
+/// - `ENotPermitted`: if caller doesn't have `GroupDeleter` permission
+public fun delete<T: drop>(
+    self: PermissionedGroup<T>,
+    ctx: &TxContext,
+): (PermissionsTable, u64, address) {
+    self.assert_not_paused();
+    assert!(self.has_permission<T, GroupDeleter>(ctx.sender()), ENotPermitted);
     let PermissionedGroup { id, permissions, permissions_admin_count, creator } = self;
-    event::emit(GroupDestroyed<T> { group_id: id.to_inner(), destroyer: ctx.sender() });
+    event::emit(GroupDeleted<T> { group_id: id.to_inner(), deleter: ctx.sender() });
     id.delete();
     (permissions, permissions_admin_count, creator)
 }
 
-/// Archives a PermissionedGroup, preventing all future mutations.
-/// Once archived, no permissions can be granted/revoked, no members can be added/removed,
-/// and the group cannot be destroyed. Read operations (has_permission, is_member, etc.)
-/// and UID read access (object_uid) continue to work.
+/// Pauses the group, preventing all mutations.
+/// Returns an `UnpauseCap<T>` that is required to unpause.
 ///
-/// Requires `Destroyer` permission (same gate as destroy — archive is strictly less destructive).
-/// This operation is irreversible.
+/// To use as an emergency fix: pause → fix state in a PTB → unpause.
+/// To archive (messaging layer): pause → store the returned cap as a DOF.
 ///
 /// # Aborts
-/// - `ENotPermitted`: if caller doesn't have `Destroyer` permission
-/// - `EGroupArchived`: if the group is already archived
-public fun archive<T: drop>(self: &mut PermissionedGroup<T>, ctx: &TxContext) {
-    assert!(self.has_permission<T, Destroyer>(ctx.sender()), ENotPermitted);
-    assert_not_archived(self);
-    dynamic_field::add(&mut self.id, ArchiveMarker(), true);
-    event::emit(GroupArchived<T> { group_id: object::id(self), archived_by: ctx.sender() });
+/// - `ENotPermitted`: if caller doesn't have `PermissionsAdmin`
+/// - `EAlreadyPaused`: if the group is already paused
+public fun pause<T: drop>(self: &mut PermissionedGroup<T>, ctx: &mut TxContext): UnpauseCap<T> {
+    assert!(self.has_permission<T, PermissionsAdmin>(ctx.sender()), ENotPermitted);
+    assert!(!self.is_paused(), EAlreadyPaused);
+    dynamic_field::add(&mut self.id, PausedMarker(), true);
+    event::emit(GroupPaused<T> { group_id: object::id(self), paused_by: ctx.sender() });
+    unpause_cap::new<T>(object::id(self), ctx)
 }
 
-/// Returns whether the group is archived.
-public fun is_archived<T: drop>(self: &PermissionedGroup<T>): bool {
-    dynamic_field::exists_(&self.id, ArchiveMarker())
+/// Unpauses the group. Consumes and destroys the `UnpauseCap`.
+///
+/// # Aborts
+/// - `EGroupIdMismatch`: if the cap belongs to a different group
+public fun unpause<T: drop>(self: &mut PermissionedGroup<T>, cap: UnpauseCap<T>, ctx: &TxContext) {
+    assert!(unpause_cap::group_id(&cap) == object::id(self), EGroupIdMismatch);
+    dynamic_field::remove<PausedMarker, bool>(&mut self.id, PausedMarker());
+    unpause_cap::delete(cap);
+    event::emit(GroupUnpaused<T> { group_id: object::id(self), unpaused_by: ctx.sender() });
+}
+
+/// Returns whether the group is currently paused.
+public fun is_paused<T: drop>(self: &PermissionedGroup<T>): bool {
+    dynamic_field::exists_(&self.id, PausedMarker())
 }
 
 /// Grants a permission to a member.
@@ -312,7 +335,7 @@ public fun grant_permission<T: drop, NewPermission: drop>(
     member: address,
     ctx: &TxContext,
 ) {
-    assert_not_archived(self);
+    self.assert_not_paused();
     // Verify caller has permission to grant this permission type
     self.assert_can_manage_permission<T, NewPermission>(ctx.sender());
 
@@ -344,7 +367,7 @@ public fun object_grant_permission<T: drop, NewPermission: drop>(
     actor_object: &UID,
     recipient: address,
 ) {
-    assert_not_archived(self);
+    self.assert_not_paused();
     let actor_address = actor_object.to_address();
 
     // Verify actor has permission to grant this permission type
@@ -371,7 +394,7 @@ public fun remove_member<T: drop>(
     member: address,
     ctx: &TxContext,
 ) {
-    assert_not_archived(self);
+    self.assert_not_paused();
     assert!(self.has_permission<T, PermissionsAdmin>(ctx.sender()), ENotPermitted);
     assert!(self.is_member<T>(member), EMemberNotFound);
     self.safe_decrement_permissions_admin_count(member);
@@ -401,7 +424,7 @@ public fun object_remove_member<T: drop>(
     actor_object: &UID,
     member: address,
 ) {
-    assert_not_archived(self);
+    self.assert_not_paused();
     let actor_address = actor_object.to_address();
     assert!(self.has_permission<T, PermissionsAdmin>(actor_address), ENotPermitted);
     assert!(self.is_member<T>(member), EMemberNotFound);
@@ -441,7 +464,7 @@ public fun revoke_permission<T: drop, ExistingPermission: drop>(
     member: address,
     ctx: &TxContext,
 ) {
-    assert_not_archived(self);
+    self.assert_not_paused();
     // Verify caller has permission to revoke this permission type
     self.assert_can_manage_permission<T, ExistingPermission>(ctx.sender());
 
@@ -476,7 +499,7 @@ public fun object_revoke_permission<T: drop, ExistingPermission: drop>(
     actor_object: &UID,
     member: address,
 ) {
-    assert_not_archived(self);
+    self.assert_not_paused();
     let actor_address = actor_object.to_address();
 
     // Verify actor has permission to revoke this permission type
@@ -544,6 +567,7 @@ public fun creator<T: drop>(self: &PermissionedGroup<T>): address {
 /// # Aborts
 /// - `ENotPermitted`: if actor_object doesn't have `ObjectAdmin` permission
 public fun object_uid<T: drop>(self: &PermissionedGroup<T>, actor_object: &UID): &UID {
+    self.assert_not_paused();
     assert!(self.has_permission<T, ObjectAdmin>(actor_object.to_address()), ENotPermitted);
     &self.id
 }
@@ -556,7 +580,7 @@ public fun object_uid<T: drop>(self: &PermissionedGroup<T>, actor_object: &UID):
 /// # Aborts
 /// - `ENotPermitted`: if actor_object doesn't have `ObjectAdmin` permission
 public fun object_uid_mut<T: drop>(self: &mut PermissionedGroup<T>, actor_object: &UID): &mut UID {
-    assert_not_archived(self);
+    self.assert_not_paused();
     assert!(self.has_permission<T, ObjectAdmin>(actor_object.to_address()), ENotPermitted);
     &mut self.id
 }
@@ -574,9 +598,9 @@ public fun permissions_admin_count<T: drop>(self: &PermissionedGroup<T>): u64 {
 
 // === Private Functions ===
 
-/// Asserts that the group is not archived.
-fun assert_not_archived<T: drop>(self: &PermissionedGroup<T>) {
-    assert!(!self.is_archived(), EGroupArchived);
+/// Asserts that the group is not paused.
+fun assert_not_paused<T: drop>(self: &PermissionedGroup<T>) {
+    assert!(!self.is_paused(), EGroupPaused);
 }
 
 /// Returns true if Permission is defined in the permissioned_groups package.
@@ -684,15 +708,14 @@ fun internal_revoke_permission<T: drop, ExistingPermission: drop>(
 
 /// Shared initialization logic for `new` and `new_derived`.
 /// Creates a `PermissionsTable`, adds the creator with `PermissionsAdmin`,
-/// `ExtensionPermissionsAdmin`, and `Destroyer`, and emits the initial events.
+/// `ExtensionPermissionsAdmin`
 macro fun internal_new<$T: drop>($group_uid: UID, $creator: address): PermissionedGroup<$T> {
     let mut group_uid = $group_uid;
     let creator = $creator;
-    // Initialize creator with PermissionsAdmin, ExtensionPermissionsAdmin, and Destroyer
+    // Initialize creator with PermissionsAdmin, ExtensionPermissionsAdmin
     let mut creator_permissions = vec_set::empty<TypeName>();
     creator_permissions.insert(type_name::with_original_ids<PermissionsAdmin>());
     creator_permissions.insert(type_name::with_original_ids<ExtensionPermissionsAdmin>());
-    creator_permissions.insert(type_name::with_original_ids<Destroyer>());
 
     let mut permissions_table = permissions_table::new_derived(
         &mut group_uid,

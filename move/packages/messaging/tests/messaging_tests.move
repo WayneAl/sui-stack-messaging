@@ -901,12 +901,14 @@ fun setup_shared_group(ts: &mut ts::Scenario): ID {
     group_id
 }
 
-/// Helper: archives the group as ALICE (who has Destroyer from creation).
+/// Helper: archives the group as ALICE (who has PermissionsAdmin from creation).
 fun archive_group(ts: &mut ts::Scenario) {
     ts.next_tx(ALICE);
+    let version = ts.take_shared<Version>();
     let mut group = ts.take_shared<PermissionedGroup<Messaging>>();
-    group.archive<Messaging>(ts.ctx());
+    messaging::archive_group(&version, &mut group, ts.ctx());
     ts::return_shared(group);
+    ts::return_shared(version);
 }
 
 #[test, expected_failure(abort_code = messaging::EGroupArchived)]
@@ -931,7 +933,7 @@ fun rotate_encryption_key_on_archived_group_fails() {
     abort
 }
 
-#[test, expected_failure(abort_code = pg::EGroupArchived)]
+#[test, expected_failure(abort_code = pg::EGroupPaused)]
 fun leave_on_archived_group_fails() {
     let mut ts = ts::begin(ALICE);
     setup_shared_group(&mut ts);
@@ -953,7 +955,7 @@ fun leave_on_archived_group_fails() {
     abort
 }
 
-#[test, expected_failure(abort_code = pg::EGroupArchived)]
+#[test, expected_failure(abort_code = pg::EGroupPaused)]
 fun set_group_name_on_archived_group_fails() {
     let mut ts = ts::begin(ALICE);
     setup_shared_group(&mut ts);
@@ -972,7 +974,7 @@ fun set_group_name_on_archived_group_fails() {
     abort
 }
 
-#[test, expected_failure(abort_code = pg::EGroupArchived)]
+#[test, expected_failure(abort_code = pg::EGroupPaused)]
 fun insert_group_data_on_archived_group_fails() {
     let mut ts = ts::begin(ALICE);
     setup_shared_group(&mut ts);
