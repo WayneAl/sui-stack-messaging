@@ -1,8 +1,9 @@
 #[test_only]
 module messaging::messaging_tests;
 
-use permissioned_groups::permissioned_group::{PermissionedGroup, Administrator, ExtensionPermissionsManager};
+use permissioned_groups::permissioned_group::{PermissionedGroup, PermissionsAdmin, ExtensionPermissionsAdmin};
 use messaging::encryption_history::{Self, EncryptionHistory, EncryptionKeyRotator};
+use messaging::group_leaver::GroupLeaver;
 use messaging::messaging::{
     Self,
     Messaging,
@@ -36,6 +37,7 @@ const TEST_UUID_7: vector<u8> = b"550e8400-e29b-41d4-a716-446655440006";
 const TEST_UUID_8: vector<u8> = b"550e8400-e29b-41d4-a716-446655440007";
 const TEST_UUID_9: vector<u8> = b"550e8400-e29b-41d4-a716-446655440008";
 const TEST_UUID_10: vector<u8> = b"550e8400-e29b-41d4-a716-446655440009";
+const TEST_UUID_11: vector<u8> = b"550e8400-e29b-41d4-a716-44665544000a";
 
 // === create_group tests ===
 
@@ -61,7 +63,8 @@ fun create_group_creates_group_and_encryption_history() {
     // Verify group creator
     assert!(group.creator<Messaging>() == ALICE);
     assert!(group.is_member(ALICE));
-    assert!(group.administrators_count<Messaging>() == 1);
+    // Count is 2: creator (ALICE) + GroupLeaver actor (always granted PermissionsAdmin to enable leave)
+    assert!(group.permissions_admin_count<Messaging>() == 2);
 
     // Verify creator has all messaging permissions
     assert!(group.has_permission<Messaging, MessagingSender>(ALICE));
@@ -71,8 +74,8 @@ fun create_group_creates_group_and_encryption_history() {
     assert!(group.has_permission<Messaging, EncryptionKeyRotator>(ALICE));
 
     // Verify creator has core permissions
-    assert!(group.has_permission<Messaging, Administrator>(ALICE));
-    assert!(group.has_permission<Messaging, ExtensionPermissionsManager>(ALICE));
+    assert!(group.has_permission<Messaging, PermissionsAdmin>(ALICE));
+    assert!(group.has_permission<Messaging, ExtensionPermissionsAdmin>(ALICE));
 
     // Verify encryption history
     assert_eq!(encryption_history.group_id(), object::id(&group));
@@ -149,10 +152,10 @@ fun create_group_with_initial_members() {
 
     // Verify Bob does NOT have other permissions
     assert_eq!(group.has_permission<Messaging, MessagingSender>(BOB), false);
-    assert_eq!(group.has_permission<Messaging, Administrator>(BOB), false);
+    assert_eq!(group.has_permission<Messaging, PermissionsAdmin>(BOB), false);
 
     // Verify creator still has all permissions
-    assert_eq!(group.has_permission<Messaging, Administrator>(ALICE), true);
+    assert_eq!(group.has_permission<Messaging, PermissionsAdmin>(ALICE), true);
     assert_eq!(group.has_permission<Messaging, MessagingReader>(ALICE), true);
 
     ts::return_shared(namespace);
@@ -187,7 +190,7 @@ fun create_group_with_initial_members_including_creator() {
     assert_eq!(group.has_permission<Messaging, MessagingReader>(BOB), true);
 
     // Verify Alice still has all permissions (not just MessagingReader)
-    assert_eq!(group.has_permission<Messaging, Administrator>(ALICE), true);
+    assert_eq!(group.has_permission<Messaging, PermissionsAdmin>(ALICE), true);
     assert_eq!(group.has_permission<Messaging, MessagingSender>(ALICE), true);
 
     ts::return_shared(namespace);
@@ -211,7 +214,7 @@ fun create_and_share_group_creates_shared_objects() {
         &mut namespace,
         string::utf8(TEST_UUID_5),
         TEST_ENCRYPTED_DEK,
-        vec_set::empty(),
+        vector[],
         ts.ctx(),
     );
     ts::return_shared(namespace);
@@ -312,89 +315,6 @@ fun rotate_encryption_key_without_permission_fails() {
     abort
 }
 
-// === grant_all_messaging_permissions tests ===
-
-#[test]
-fun grant_all_messaging_permissions_grants_all() {
-    let mut ts = ts::begin(ALICE);
-
-    ts.next_tx(ALICE);
-    messaging::init_for_testing(ts.ctx());
-
-    ts.next_tx(ALICE);
-    let mut namespace = ts.take_shared<MessagingNamespace>();
-    let (mut group, encryption_history) = messaging::create_group(
-        &mut namespace,
-        string::utf8(TEST_UUID_8),
-        TEST_ENCRYPTED_DEK,
-        vec_set::empty(),
-        ts.ctx(),
-    );
-
-    // Grant Bob all messaging permissions
-    messaging::grant_all_messaging_permissions(&mut group, BOB, ts.ctx());
-
-    // Verify Bob has all messaging permissions
-    assert!(group.has_permission<Messaging, MessagingSender>(BOB));
-    assert!(group.has_permission<Messaging, MessagingReader>(BOB));
-    assert!(group.has_permission<Messaging, MessagingEditor>(BOB));
-    assert!(group.has_permission<Messaging, MessagingDeleter>(BOB));
-    assert!(group.has_permission<Messaging, EncryptionKeyRotator>(BOB));
-
-    // Verify Bob does NOT have core permissions
-    assert!(!group.has_permission<Messaging, Administrator>(BOB));
-    assert!(!group.has_permission<Messaging, ExtensionPermissionsManager>(BOB));
-
-    ts::return_shared(namespace);
-    destroy(group);
-    destroy(encryption_history);
-    ts.end();
-}
-
-// === grant_all_permissions tests ===
-
-#[test]
-fun grant_all_permissions_grants_base_and_messaging() {
-    let mut ts = ts::begin(ALICE);
-
-    ts.next_tx(ALICE);
-    messaging::init_for_testing(ts.ctx());
-
-    ts.next_tx(ALICE);
-    let mut namespace = ts.take_shared<MessagingNamespace>();
-    let (mut group, encryption_history) = messaging::create_group(
-        &mut namespace,
-        string::utf8(TEST_UUID_9),
-        TEST_ENCRYPTED_DEK,
-        vec_set::empty(),
-        ts.ctx(),
-    );
-
-    assert_eq!(group.administrators_count<Messaging>(), 1);
-
-    // Grant Bob all permissions (admin)
-    messaging::grant_all_permissions(&mut group, BOB, ts.ctx());
-
-    // Verify Bob has all messaging permissions
-    assert!(group.has_permission<Messaging, MessagingSender>(BOB));
-    assert!(group.has_permission<Messaging, MessagingReader>(BOB));
-    assert!(group.has_permission<Messaging, MessagingEditor>(BOB));
-    assert!(group.has_permission<Messaging, MessagingDeleter>(BOB));
-    assert!(group.has_permission<Messaging, EncryptionKeyRotator>(BOB));
-
-    // Verify Bob has core permissions
-    assert!(group.has_permission<Messaging, Administrator>(BOB));
-    assert!(group.has_permission<Messaging, ExtensionPermissionsManager>(BOB));
-
-    // Verify administrators count incremented
-    assert_eq!(group.administrators_count<Messaging>(), 2);
-
-    ts::return_shared(namespace);
-    destroy(group);
-    destroy(encryption_history);
-    ts.end();
-}
-
 // === EncryptionHistory getters tests ===
 
 #[test]
@@ -408,7 +328,7 @@ fun encryption_history_encrypted_key_returns_correct_version() {
     let mut namespace = ts.take_shared<MessagingNamespace>();
     let (group, encryption_history) = messaging::create_group(
         &mut namespace,
-        string::utf8(TEST_UUID_10),
+        string::utf8(TEST_UUID_8),
         TEST_ENCRYPTED_DEK,
         vec_set::empty(),
         ts.ctx(),
@@ -525,6 +445,108 @@ fun rotate_encryption_key_with_oversized_dek_fails() {
         make_oversized_dek(),
         ts.ctx(),
     );
+
+    abort
+}
+
+// === leave tests ===
+
+#[test]
+fun leave_removes_member() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    messaging::init_for_testing(ts.ctx());
+
+    ts.next_tx(ALICE);
+    let mut namespace = ts.take_shared<MessagingNamespace>();
+    let (mut group, encryption_history) = messaging::create_group(
+        &mut namespace,
+        string::utf8(TEST_UUID_9),
+        TEST_ENCRYPTED_DEK,
+        vec_set::empty(),
+        ts.ctx(),
+    );
+    // Grant Bob MessagingReader so he becomes a member
+    group.grant_permission<Messaging, MessagingReader>(BOB, ts.ctx());
+    transfer::public_share_object(group);
+    transfer::public_share_object(encryption_history);
+    ts::return_shared(namespace);
+
+    // Bob leaves
+    ts.next_tx(BOB);
+    let mut group = ts.take_shared<PermissionedGroup<Messaging>>();
+    let group_leaver = ts.take_shared<GroupLeaver>();
+    messaging::leave(&group_leaver, &mut group, ts.ctx());
+
+    assert_eq!(group.is_member(BOB), false);
+
+    ts::return_shared(group);
+    ts::return_shared(group_leaver);
+    ts.end();
+}
+
+#[test]
+fun leave_sole_human_admin_succeeds() {
+    // GroupLeaver holds PermissionsAdmin on all groups, so even the sole human admin can leave.
+    // After leaving, GroupLeaver remains as the only PermissionsAdmin.
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    messaging::init_for_testing(ts.ctx());
+
+    ts.next_tx(ALICE);
+    let mut namespace = ts.take_shared<MessagingNamespace>();
+    let (group, encryption_history) = messaging::create_group(
+        &mut namespace,
+        string::utf8(TEST_UUID_10),
+        TEST_ENCRYPTED_DEK,
+        vec_set::empty(),
+        ts.ctx(),
+    );
+    transfer::public_share_object(group);
+    transfer::public_share_object(encryption_history);
+    ts::return_shared(namespace);
+
+    ts.next_tx(ALICE);
+    let mut group = ts.take_shared<PermissionedGroup<Messaging>>();
+    let group_leaver = ts.take_shared<GroupLeaver>();
+    messaging::leave(&group_leaver, &mut group, ts.ctx());
+
+    assert_eq!(group.is_member(ALICE), false);
+    // GroupLeaver is still the remaining PermissionsAdmin
+    assert_eq!(group.permissions_admin_count<Messaging>(), 1);
+
+    ts::return_shared(group);
+    ts::return_shared(group_leaver);
+    ts.end();
+}
+
+#[test, expected_failure(abort_code = permissioned_groups::permissioned_group::EMemberNotFound)]
+fun leave_non_member_fails() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    messaging::init_for_testing(ts.ctx());
+
+    ts.next_tx(ALICE);
+    let mut namespace = ts.take_shared<MessagingNamespace>();
+    let (group, encryption_history) = messaging::create_group(
+        &mut namespace,
+        string::utf8(TEST_UUID_11),
+        TEST_ENCRYPTED_DEK,
+        vec_set::empty(),
+        ts.ctx(),
+    );
+    transfer::public_share_object(group);
+    transfer::public_share_object(encryption_history);
+    ts::return_shared(namespace);
+
+    // Bob is not a member — leave should fail
+    ts.next_tx(BOB);
+    let mut group = ts.take_shared<PermissionedGroup<Messaging>>();
+    let group_leaver = ts.take_shared<GroupLeaver>();
+    messaging::leave(&group_leaver, &mut group, ts.ctx());
 
     abort
 }

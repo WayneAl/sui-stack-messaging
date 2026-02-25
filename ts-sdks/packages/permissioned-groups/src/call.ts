@@ -4,14 +4,18 @@
 import type { Transaction, TransactionResult } from '@mysten/sui/transactions';
 
 import * as permissionedGroup from './contracts/permissioned_groups/permissioned_group.js';
+import { permissionTypes } from './constants.js';
 import type {
+	GrantAllPermissionsCallOptions,
 	GrantPermissionCallOptions,
+	GrantPermissionsCallOptions,
 	ObjectGrantPermissionCallOptions,
 	ObjectRemoveMemberCallOptions,
 	ObjectRevokePermissionCallOptions,
 	PermissionedGroupsPackageConfig,
 	RemoveMemberCallOptions,
 	RevokePermissionCallOptions,
+	RevokePermissionsCallOptions,
 } from './types.js';
 
 export interface PermissionedGroupsCallOptions {
@@ -51,8 +55,8 @@ export class PermissionedGroupsCall {
 	 * If the member doesn't exist, they are automatically added to the group.
 	 *
 	 * Permission requirements:
-	 * - To grant Administrator: caller must have Administrator
-	 * - To grant any other permission: caller must have Administrator OR ExtensionPermissionsManager
+	 * - To grant PermissionsAdmin: caller must have PermissionsAdmin
+	 * - To grant any other permission: caller must have PermissionsAdmin OR ExtensionPermissionsAdmin
 	 */
 	grantPermission(options: GrantPermissionCallOptions): (tx: Transaction) => TransactionResult {
 		return permissionedGroup.grantPermission({
@@ -70,8 +74,8 @@ export class PermissionedGroupsCall {
 	 * Enables third-party contracts to grant permissions with custom logic.
 	 *
 	 * Permission requirements:
-	 * - To grant Administrator: actor must have Administrator
-	 * - To grant any other permission: actor must have Administrator OR ExtensionPermissionsManager
+	 * - To grant PermissionsAdmin: actor must have PermissionsAdmin
+	 * - To grant any other permission: actor must have PermissionsAdmin OR ExtensionPermissionsAdmin
 	 */
 	objectGrantPermission(
 		options: ObjectGrantPermissionCallOptions,
@@ -92,8 +96,8 @@ export class PermissionedGroupsCall {
 	 * If this is the member's last permission, they are automatically removed.
 	 *
 	 * Permission requirements:
-	 * - To revoke Administrator: caller must have Administrator
-	 * - To revoke any other permission: caller must have Administrator OR ExtensionPermissionsManager
+	 * - To revoke PermissionsAdmin: caller must have PermissionsAdmin
+	 * - To revoke any other permission: caller must have PermissionsAdmin OR ExtensionPermissionsAdmin
 	 */
 	revokePermission(options: RevokePermissionCallOptions): (tx: Transaction) => TransactionResult {
 		return permissionedGroup.revokePermission({
@@ -124,11 +128,62 @@ export class PermissionedGroupsCall {
 		});
 	}
 
+	// === Batch/Convenience Functions ===
+
+	/**
+	 * Grants multiple permissions to a member in a single transaction.
+	 * If the member doesn't exist, they are automatically added on the first grant.
+	 */
+	grantPermissions(options: GrantPermissionsCallOptions): (tx: Transaction) => void {
+		return (tx: Transaction) => {
+			for (const permType of options.permissionTypes) {
+				tx.add(
+					this.grantPermission({
+						groupId: options.groupId,
+						member: options.member,
+						permissionType: permType,
+					}),
+				);
+			}
+		};
+	}
+
+	/**
+	 * Revokes multiple permissions from a member in a single transaction.
+	 * If the last permission is revoked, the member is automatically removed.
+	 */
+	revokePermissions(options: RevokePermissionsCallOptions): (tx: Transaction) => void {
+		return (tx: Transaction) => {
+			for (const permType of options.permissionTypes) {
+				tx.add(
+					this.revokePermission({
+						groupId: options.groupId,
+						member: options.member,
+						permissionType: permType,
+					}),
+				);
+			}
+		};
+	}
+
+	/**
+	 * Grants all 3 core permissions to a member:
+	 * PermissionsAdmin, ExtensionPermissionsAdmin, ObjectAdmin.
+	 */
+	grantAllPermissions(options: GrantAllPermissionsCallOptions): (tx: Transaction) => void {
+		const types = permissionTypes(this.#packageConfig.packageId);
+		return this.grantPermissions({
+			groupId: options.groupId,
+			member: options.member,
+			permissionTypes: Object.values(types),
+		});
+	}
+
 	// === Member Management Functions ===
 
 	/**
 	 * Removes a member from the PermissionedGroup.
-	 * Requires Administrator permission.
+	 * Requires PermissionsAdmin permission.
 	 */
 	removeMember(options: RemoveMemberCallOptions): (tx: Transaction) => TransactionResult {
 		return permissionedGroup.removeMember({
@@ -143,7 +198,7 @@ export class PermissionedGroupsCall {
 
 	/**
 	 * Removes a member from the group via an actor object.
-	 * The actor object must have Administrator permission.
+	 * The actor object must have PermissionsAdmin permission.
 	 */
 	objectRemoveMember(
 		options: ObjectRemoveMemberCallOptions,

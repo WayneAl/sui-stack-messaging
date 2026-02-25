@@ -14,8 +14,7 @@ import {
 import { EnvelopeEncryption } from './encryption/envelope-encryption.js';
 import type {
 	CreateGroupOptions,
-	GrantAllMessagingPermissionsOptions,
-	GrantAllPermissionsOptions,
+	LeaveOptions,
 	MessagingGroupsClientOptions,
 	MessagingGroupsCompatibleClient,
 	MessagingGroupsEncryptionOptions,
@@ -147,6 +146,7 @@ export class MessagingGroupsClient<TApproveContext = void> {
 		}
 
 		// Resolve extension dependencies by their registered names
+		const groupsExt = options.client[options.groupsName];
 		const sealExt = options.client[options.sealName] as SealClient;
 
 		// Build order matters: bcs → derive → view → encryption → call → tx
@@ -169,6 +169,9 @@ export class MessagingGroupsClient<TApproveContext = void> {
 		this.call = new MessagingGroupsCall({
 			packageConfig: this.#packageConfig,
 			encryption: this.encryption,
+			derive: this.derive,
+			permissionedGroupTypeName: groupsExt.bcs.PermissionedGroup.name,
+			encryptionHistoryTypeName: this.bcs.EncryptionHistory.name,
 		});
 		this.tx = new MessagingGroupsTransactions({
 			call: this.call,
@@ -239,23 +242,11 @@ export class MessagingGroupsClient<TApproveContext = void> {
 	}
 
 	/**
-	 * Grants all messaging permissions to a member.
-	 * Requires ExtensionPermissionsManager permission.
+	 * Removes the transaction sender from a messaging group.
 	 */
-	async grantAllMessagingPermissions(options: GrantAllMessagingPermissionsOptions) {
+	async leave(options: LeaveOptions) {
 		const { signer, ...callOptions } = options;
-		const transaction = this.tx.grantAllMessagingPermissions(callOptions);
-		return this.#executeTransaction(transaction, signer, 'grant all messaging permissions');
-	}
-
-	/**
-	 * Grants all permissions (Administrator, ExtensionPermissionsManager + messaging) to a member.
-	 * Makes them a full admin.
-	 * Requires Administrator permission.
-	 */
-	async grantAllPermissions(options: GrantAllPermissionsOptions) {
-		const { signer, ...callOptions } = options;
-		const transaction = this.tx.grantAllPermissions(callOptions);
-		return this.#executeTransaction(transaction, signer, 'grant all permissions');
+		const transaction = this.tx.leave(callOptions);
+		return this.#executeTransaction(transaction, signer, 'leave group');
 	}
 }

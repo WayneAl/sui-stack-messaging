@@ -11,7 +11,9 @@ import {
 	MAINNET_PERMISSIONED_GROUPS_PACKAGE_CONFIG,
 } from './constants.js';
 import type {
+	GrantAllPermissionsOptions,
 	GrantPermissionOptions,
+	GrantPermissionsOptions,
 	ObjectGrantPermissionOptions,
 	ObjectRemoveMemberOptions,
 	ObjectRevokePermissionOptions,
@@ -20,6 +22,7 @@ import type {
 	PermissionedGroupsPackageConfig,
 	RemoveMemberOptions,
 	RevokePermissionOptions,
+	RevokePermissionsOptions,
 } from './types.js';
 import { PermissionedGroupsCall } from './call.js';
 import { PermissionedGroupsTransactions } from './transactions.js';
@@ -175,6 +178,25 @@ export class PermissionedGroupsClient {
 	}
 
 	/**
+	 * Grants multiple permissions to a member in a single transaction.
+	 */
+	async grantPermissions(options: GrantPermissionsOptions) {
+		const { signer, ...callOptions } = options;
+		const transaction = this.tx.grantPermissions(callOptions);
+		return this.#executeTransaction(transaction, signer, 'grant permissions');
+	}
+
+	/**
+	 * Grants all 3 core permissions to a member:
+	 * PermissionsAdmin, ExtensionPermissionsAdmin, ObjectAdmin.
+	 */
+	async grantAllPermissions(options: GrantAllPermissionsOptions) {
+		const { signer, ...callOptions } = options;
+		const transaction = this.tx.grantAllPermissions(callOptions);
+		return this.#executeTransaction(transaction, signer, 'grant all permissions');
+	}
+
+	/**
 	 * Revokes a permission from a member.
 	 * If this is the member's last permission, they are automatically removed.
 	 */
@@ -194,8 +216,17 @@ export class PermissionedGroupsClient {
 	}
 
 	/**
+	 * Revokes multiple permissions from a member in a single transaction.
+	 */
+	async revokePermissions(options: RevokePermissionsOptions) {
+		const { signer, ...callOptions } = options;
+		const transaction = this.tx.revokePermissions(callOptions);
+		return this.#executeTransaction(transaction, signer, 'revoke permissions');
+	}
+
+	/**
 	 * Removes a member from the PermissionedGroup.
-	 * Requires Administrator permission.
+	 * Requires PermissionsAdmin permission.
 	 */
 	async removeMember(options: RemoveMemberOptions) {
 		const { signer, ...callOptions } = options;

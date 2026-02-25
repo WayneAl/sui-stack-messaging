@@ -6,8 +6,7 @@ import { Transaction } from '@mysten/sui/transactions';
 import type { MessagingGroupsCall } from './call.js';
 import type {
 	CreateGroupCallOptions,
-	GrantAllMessagingPermissionsCallOptions,
-	GrantAllPermissionsCallOptions,
+	LeaveCallOptions,
 	RotateEncryptionKeyCallOptions,
 } from './types.js';
 
@@ -70,23 +69,12 @@ export class MessagingGroupsTransactions {
 		return tx;
 	}
 
-	// === Permission Functions ===
-
 	/**
-	 * Creates a Transaction that grants all messaging permissions to a member.
+	 * Creates a Transaction that removes the sender from a messaging group.
 	 */
-	grantAllMessagingPermissions(options: GrantAllMessagingPermissionsCallOptions): Transaction {
+	leave(options: LeaveCallOptions): Transaction {
 		const tx = new Transaction();
-		tx.add(this.#call.grantAllMessagingPermissions(options));
-		return tx;
-	}
-
-	/**
-	 * Creates a Transaction that grants all permissions (admin + messaging) to a member.
-	 */
-	grantAllPermissions(options: GrantAllPermissionsCallOptions): Transaction {
-		const tx = new Transaction();
-		tx.add(this.#call.grantAllPermissions(options));
+		tx.add(this.#call.leave(options));
 		return tx;
 	}
 }

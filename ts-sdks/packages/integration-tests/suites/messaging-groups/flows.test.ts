@@ -5,7 +5,7 @@ import { describe, it, expect, inject, beforeAll } from 'vitest';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { fromHex } from '@mysten/sui/utils';
 import { EncryptedObject } from '@mysten/seal';
-import { DefaultSealPolicy } from '@mysten/messaging-groups';
+import { DefaultSealPolicy, messagingPermissionTypes } from '@mysten/messaging-groups';
 import { requestSuiFromFaucetV2 } from '@mysten/sui/faucet';
 
 import {
@@ -86,9 +86,7 @@ describe('Full Flows', () => {
 
 			// Verify effects contain created objects
 			expect(effects).toBeDefined();
-			const createdObjects = effects!.changedObjects.filter(
-				(obj) => obj.idOperation === 'Created',
-			);
+			const createdObjects = effects!.changedObjects.filter((obj) => obj.idOperation === 'Created');
 			expect(createdObjects.length).toBeGreaterThanOrEqual(2); // group + encryption history
 
 			// Verify the derived group and encryption history exist on-chain
@@ -190,8 +188,7 @@ describe('Full Flows', () => {
 			const identityBytes = fromHex(parsed.id);
 			expect(identityBytes.length).toBe(40);
 
-			const addressHex =
-				'0x' + Buffer.from(identityBytes.slice(0, 32)).toString('hex');
+			const addressHex = '0x' + Buffer.from(identityBytes.slice(0, 32)).toString('hex');
 			expect(addressHex).toBe(groupId);
 
 			const versionBytes = identityBytes.slice(32, 40);
@@ -278,10 +275,11 @@ describe('Full Flows', () => {
 			).rejects.toThrow(/seal_approve/);
 
 			// Grant all messaging permissions
-			await adminClient.messaging.grantAllMessagingPermissions({
+			await adminClient.groups.grantPermissions({
 				signer: adminKeypair,
 				groupId,
 				member: memberAddress,
+				permissionTypes: Object.values(messagingPermissionTypes(messagingPackageId)),
 			});
 
 			// Admin encrypts a message
@@ -381,6 +379,75 @@ describe('Full Flows', () => {
 		});
 	});
 
+	describe('leave', () => {
+		it('should allow a member to leave a messaging group', async () => {
+			const uuid = crypto.randomUUID();
+
+			await adminClient.messaging.createAndShareGroup({
+				signer: adminKeypair,
+				uuid,
+			});
+
+			const groupId = adminClient.messaging.derive.groupId({ uuid });
+
+			// Fund a member and add them to the group
+			const memberKeypair = await fundNewKeypair(faucetUrl);
+			const memberAddress = memberKeypair.getPublicKey().toSuiAddress();
+			const memberClient = createMessagingGroupsClient({
+				...clientConfig,
+				url: clientConfig.suiClientUrl,
+				network: 'localnet',
+				keypair: memberKeypair,
+			});
+
+			await adminClient.groups.grantPermissions({
+				signer: adminKeypair,
+				groupId,
+				member: memberAddress,
+				permissionTypes: Object.values(messagingPermissionTypes(messagingPackageId)),
+			});
+
+			expect(
+				await adminClient.groups.view.isMember({ groupId, member: memberAddress }),
+			).toBe(true);
+
+			// Member leaves via the messaging leave (GroupLeaver actor)
+			await memberClient.messaging.leave({
+				signer: memberKeypair,
+				groupId,
+			});
+
+			expect(
+				await adminClient.groups.view.isMember({ groupId, member: memberAddress }),
+			).toBe(false);
+		});
+
+		it('should allow the last human admin to leave (GroupLeaver retains PermissionsAdmin)', async () => {
+			const uuid = crypto.randomUUID();
+
+			await adminClient.messaging.createAndShareGroup({
+				signer: adminKeypair,
+				uuid,
+			});
+
+			const groupId = adminClient.messaging.derive.groupId({ uuid });
+
+			// Admin is the only human PermissionsAdmin, but GroupLeaver also holds PermissionsAdmin.
+			// So leaving should succeed — the group is not left without an admin.
+			await adminClient.messaging.leave({
+				signer: adminKeypair,
+				groupId,
+			});
+
+			expect(
+				await adminClient.groups.view.isMember({
+					groupId,
+					member: adminKeypair.getPublicKey().toSuiAddress(),
+				}),
+			).toBe(false);
+		});
+	});
+
 	describe('member removal', () => {
 		it('should remove member via groups extension and deny removed member on current key', async () => {
 			const uuid = crypto.randomUUID();
@@ -405,10 +472,11 @@ describe('Full Flows', () => {
 				keypair: memberKeypair,
 			});
 
-			await adminClient.messaging.grantAllMessagingPermissions({
+			await adminClient.groups.grantPermissions({
 				signer: adminKeypair,
 				groupId,
 				member: memberAddress,
+				permissionTypes: Object.values(messagingPermissionTypes(messagingPackageId)),
 			});
 
 			// Member can access v0

@@ -1,22 +1,28 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { Transaction, TransactionResult } from '@mysten/sui/transactions';
+import type { Transaction } from '@mysten/sui/transactions';
 
 import type { EnvelopeEncryption } from './encryption/envelope-encryption.js';
 import * as messaging from './contracts/messaging/messaging.js';
+import type { MessagingGroupsDerive } from './derive.js';
 import type {
 	CreateGroupCallOptions,
-	GrantAllMessagingPermissionsCallOptions,
-	GrantAllPermissionsCallOptions,
+	LeaveCallOptions,
 	MessagingGroupsPackageConfig,
 	RotateEncryptionKeyCallOptions,
+	ShareGroupCallOptions,
 } from './types.js';
 
 export interface MessagingGroupsCallOptions {
 	packageConfig: MessagingGroupsPackageConfig;
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Call only uses context-independent methods (generateGroupDEK, generateRotationDEK)
 	encryption: EnvelopeEncryption<any>;
+	derive: MessagingGroupsDerive;
+	/** Full Move type name for PermissionedGroup<Messaging> (resolved from groups BCS). */
+	permissionedGroupTypeName: string;
+	/** Full Move type name for EncryptionHistory (resolved from messaging BCS). */
+	encryptionHistoryTypeName: string;
 }
 
 /**
@@ -37,10 +43,16 @@ export class MessagingGroupsCall {
 	#packageConfig: MessagingGroupsPackageConfig;
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Call only uses context-independent methods (generateGroupDEK, generateRotationDEK)
 	#encryption: EnvelopeEncryption<any>;
+	#derive: MessagingGroupsDerive;
+	#permissionedGroupTypeName: string;
+	#encryptionHistoryTypeName: string;
 
 	constructor(options: MessagingGroupsCallOptions) {
 		this.#packageConfig = options.packageConfig;
 		this.#encryption = options.encryption;
+		this.#derive = options.derive;
+		this.#permissionedGroupTypeName = options.permissionedGroupTypeName;
+		this.#encryptionHistoryTypeName = options.encryptionHistoryTypeName;
 	}
 
 	// === Group Creation Functions ===
@@ -83,7 +95,6 @@ export class MessagingGroupsCall {
 	createAndShareGroup(options?: CreateGroupCallOptions) {
 		return async (tx: Transaction) => {
 			const { uuid, encryptedDek } = await this.#encryption.generateGroupDEK(options?.uuid);
-			const initialMembers = this.#buildAddressVecSet(tx, options?.initialMembers ?? []);
 
 			return tx.add(
 				messaging.createAndShareGroup({
@@ -92,10 +103,40 @@ export class MessagingGroupsCall {
 						namespace: this.#packageConfig.namespaceId,
 						uuid,
 						initialEncryptedDek: Array.from(encryptedDek),
-						initialMembers,
+						initialMembers: options?.initialMembers ?? [],
 					},
 				}),
 			);
+		};
+	}
+
+	/**
+	 * Shares a PermissionedGroup<Messaging> and its EncryptionHistory.
+	 * Meant to be composed with `createGroup` in the same transaction.
+	 *
+	 * @example
+	 * ```ts
+	 * const tx = new Transaction();
+	 * const [group, encryptionHistory] = tx.add(client.messaging.call.createGroup());
+	 * tx.add(client.messaging.call.shareGroup({ group, encryptionHistory }));
+	 * ```
+	 */
+	shareGroup(options: ShareGroupCallOptions) {
+		return (tx: Transaction) => {
+			tx.moveCall({
+				package: '0x2',
+				module: 'transfer',
+				function: 'public_share_object',
+				typeArguments: [this.#permissionedGroupTypeName],
+				arguments: [options.group],
+			});
+			tx.moveCall({
+				package: '0x2',
+				module: 'transfer',
+				function: 'public_share_object',
+				typeArguments: [this.#encryptionHistoryTypeName],
+				arguments: [options.encryptionHistory],
+			});
 		};
 	}
 
@@ -129,49 +170,34 @@ export class MessagingGroupsCall {
 		};
 	}
 
-	// === Permission Functions ===
-
 	/**
-	 * Grants all messaging permissions to a member.
-	 * Includes: MessagingSender, MessagingReader, MessagingEditor, MessagingDeleter, EncryptionKeyRotator.
+	 * Removes the transaction sender from a messaging group.
 	 *
-	 * Requires ExtensionPermissionsManager permission.
-	 */
-	grantAllMessagingPermissions(
-		options: GrantAllMessagingPermissionsCallOptions,
-	): (tx: Transaction) => TransactionResult {
-		return messaging.grantAllMessagingPermissions({
-			package: this.#packageConfig.packageId,
-			arguments: {
-				group: options.groupId,
-				member: options.member,
-			},
-		});
-	}
-
-	/**
-	 * Grants all permissions (Administrator, ExtensionPermissionsManager + messaging) to a member.
-	 * Makes them a full admin.
+	 * Internally derives the `GroupLeaver` singleton ID from the namespace.
+	 * No caller-provided `groupLeaverId` is needed.
 	 *
-	 * Requires Administrator permission.
+	 * @throws if the caller is not a member, or is the last `PermissionsAdmin`
 	 */
-	grantAllPermissions(
-		options: GrantAllPermissionsCallOptions,
-	): (tx: Transaction) => TransactionResult {
-		return messaging.grantAllPermissions({
-			package: this.#packageConfig.packageId,
-			arguments: {
-				group: options.groupId,
-				member: options.member,
-			},
-		});
+	leave(options: LeaveCallOptions) {
+		return (tx: Transaction) => {
+			const groupLeaverId = this.#derive.groupLeaverId();
+			return tx.add(
+				messaging.leave({
+					package: this.#packageConfig.packageId,
+					arguments: {
+						groupLeaver: groupLeaverId,
+						group: options.groupId,
+					},
+				}),
+			);
+		};
 	}
 
 	// === Private Helpers ===
 
 	/**
 	 * Build a VecSet<address> from an array of address strings.
-	 * Uses vec_set::empty() for empty sets, or vec_set::from_keys() with a vector of addresses.
+	 * Used by createGroup which still takes VecSet<address>.
 	 */
 	#buildAddressVecSet(tx: Transaction, members: string[]) {
 		if (members.length === 0) {

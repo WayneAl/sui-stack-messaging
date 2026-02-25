@@ -15,8 +15,10 @@
  *
  * From groups (auto-granted to creator):
  *
- * - `Administrator`: Super-admin role that can grant/revoke all permissions
- * - `ExtensionPermissionsManager`: Can grant/revoke extension permissions
+ * - `PermissionsAdmin`: Manages core permissions (from permissioned_groups
+ *   package)
+ * - `ExtensionPermissionsAdmin`: Manages extension permissions (from other
+ *   packages)
  *
  * Messaging-specific:
  *
@@ -129,7 +131,7 @@ export interface CreateAndShareGroupArguments {
 	namespace: RawTransactionArgument<string>;
 	uuid: RawTransactionArgument<string>;
 	initialEncryptedDek: RawTransactionArgument<number[]>;
-	initialMembers: RawTransactionArgument<string>;
+	initialMembers: RawTransactionArgument<string[]>;
 }
 export interface CreateAndShareGroupOptions {
 	package?: string;
@@ -139,7 +141,7 @@ export interface CreateAndShareGroupOptions {
 				namespace: RawTransactionArgument<string>,
 				uuid: RawTransactionArgument<string>,
 				initialEncryptedDek: RawTransactionArgument<number[]>,
-				initialMembers: RawTransactionArgument<string>,
+				initialMembers: RawTransactionArgument<string[]>,
 		  ];
 }
 /**
@@ -160,7 +162,7 @@ export interface CreateAndShareGroupOptions {
  */
 export function createAndShareGroup(options: CreateAndShareGroupOptions) {
 	const packageAddress = options.package ?? '@local-pkg/messaging';
-	const argumentsTypes = [null, '0x1::string::String', 'vector<u8>', null] satisfies (
+	const argumentsTypes = [null, '0x1::string::String', 'vector<u8>', 'vector<address>'] satisfies (
 		| string
 		| null
 	)[];
@@ -214,78 +216,48 @@ export function rotateEncryptionKey(options: RotateEncryptionKeyOptions) {
 			arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
 		});
 }
-export interface GrantAllMessagingPermissionsArguments {
+export interface LeaveArguments {
+	groupLeaver: RawTransactionArgument<string>;
 	group: RawTransactionArgument<string>;
-	member: RawTransactionArgument<string>;
 }
-export interface GrantAllMessagingPermissionsOptions {
+export interface LeaveOptions {
 	package?: string;
 	arguments:
-		| GrantAllMessagingPermissionsArguments
-		| [group: RawTransactionArgument<string>, member: RawTransactionArgument<string>];
+		| LeaveArguments
+		| [groupLeaver: RawTransactionArgument<string>, group: RawTransactionArgument<string>];
 }
 /**
- * Grants all messaging permissions to a member. Includes: `MessagingSender`,
- * `MessagingReader`, `MessagingEditor`, `MessagingDeleter`,
- * `EncryptionKeyRotator`.
+ * Removes the caller from a messaging group. The `GroupLeaver` actor holds
+ * `PermissionsAdmin` on all groups and calls `object_remove_member` on behalf of
+ * the caller.
  *
  * # Parameters
  *
- * - `group`: Mutable reference to the PermissionedGroup<Messaging>
- * - `member`: Address to grant permissions to
+ * - `group_leaver`: Reference to the shared `GroupLeaver` object
+ * - `group`: Mutable reference to the `PermissionedGroup<Messaging>`
  * - `ctx`: Transaction context
  *
  * # Aborts
  *
- * - `ENotPermitted` (from `permissioned_group`): if caller doesn't have
- *   `Administrator` or `ExtensionPermissionsManager` permission
+ * - `EMemberNotFound` (from `permissioned_group`): if the caller is not a member
+ * - `ELastPermissionsAdmin` (from `permissioned_group`): if the caller is the last
+ *   `PermissionsAdmin` holder (including actor objects)
+ *
+ * NOTE: Because `GroupLeaver` itself holds `PermissionsAdmin` on every group, a
+ * human admin can always leave — leaving `GroupLeaver` as the sole remaining
+ * admin. A group in that state has no human admins. To promote a new human admin
+ * from that state, a dedicated actor-object wrapper over `object_grant_permission`
+ * would be needed.
  */
-export function grantAllMessagingPermissions(options: GrantAllMessagingPermissionsOptions) {
+export function leave(options: LeaveOptions) {
 	const packageAddress = options.package ?? '@local-pkg/messaging';
-	const argumentsTypes = [null, 'address'] satisfies (string | null)[];
-	const parameterNames = ['group', 'member'];
+	const argumentsTypes = [null, null] satisfies (string | null)[];
+	const parameterNames = ['groupLeaver', 'group'];
 	return (tx: Transaction) =>
 		tx.moveCall({
 			package: packageAddress,
 			module: 'messaging',
-			function: 'grant_all_messaging_permissions',
-			arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-		});
-}
-export interface GrantAllPermissionsArguments {
-	group: RawTransactionArgument<string>;
-	member: RawTransactionArgument<string>;
-}
-export interface GrantAllPermissionsOptions {
-	package?: string;
-	arguments:
-		| GrantAllPermissionsArguments
-		| [group: RawTransactionArgument<string>, member: RawTransactionArgument<string>];
-}
-/**
- * Grants all permissions (Administrator, ExtensionPermissionsManager + messaging)
- * to a member, making them an admin.
- *
- * # Parameters
- *
- * - `group`: Mutable reference to the PermissionedGroup<Messaging>
- * - `member`: Address to grant permissions to
- * - `ctx`: Transaction context
- *
- * # Aborts
- *
- * - `ENotPermitted` (from `permissions_group`): if caller doesn't have
- *   `Administrator` permission
- */
-export function grantAllPermissions(options: GrantAllPermissionsOptions) {
-	const packageAddress = options.package ?? '@local-pkg/messaging';
-	const argumentsTypes = [null, 'address'] satisfies (string | null)[];
-	const parameterNames = ['group', 'member'];
-	return (tx: Transaction) =>
-		tx.moveCall({
-			package: packageAddress,
-			module: 'messaging',
-			function: 'grant_all_permissions',
+			function: 'leave',
 			arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
 		});
 }

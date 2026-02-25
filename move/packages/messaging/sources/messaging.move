@@ -9,8 +9,8 @@
 /// ## Permissions
 ///
 /// From groups (auto-granted to creator):
-/// - `Administrator`: Super-admin role that can grant/revoke all permissions
-/// - `ExtensionPermissionsManager`: Can grant/revoke extension permissions
+/// - `PermissionsAdmin`: Manages core permissions (from permissioned_groups package)
+/// - `ExtensionPermissionsAdmin`: Manages extension permissions (from other packages)
 ///
 /// Messaging-specific:
 /// - `MessagingSender`: Send messages
@@ -27,11 +27,13 @@
 ///
 module messaging::messaging;
 
-use std::string::String;
-use permissioned_groups::permissioned_group::{Self, PermissionedGroup, Administrator, ExtensionPermissionsManager};
 use messaging::encryption_history::{Self, EncryptionHistory, EncryptionKeyRotator};
+use messaging::group_leaver::{Self, GroupLeaver};
+use permissioned_groups::permissioned_group::{Self, PermissionedGroup, PermissionsAdmin};
+use std::string::String;
+use sui::derived_object;
 use sui::package;
-use sui::vec_set::VecSet;
+use sui::vec_set::{Self, VecSet};
 
 // === Error Codes ===
 
@@ -73,9 +75,13 @@ public struct MessagingNamespace has key {
 fun init(otw: MESSAGING, ctx: &mut TxContext) {
     package::claim_and_keep(otw, ctx);
 
-    transfer::share_object(MessagingNamespace {
+    let mut namespace = MessagingNamespace {
         id: object::new(ctx),
-    });
+    };
+
+    let group_leaver = group_leaver::new(&mut namespace.id);
+    transfer::share_object(namespace);
+    group_leaver::share(group_leaver);
 }
 
 // === Public Functions ===
@@ -121,6 +127,14 @@ public fun create_group(
     let creator = ctx.sender();
     grant_all_messaging_permissions(&mut group, creator, ctx);
 
+    // Grant PermissionsAdmin to the GroupLeaver actor so it can remove members on behalf of callers.
+    // The address is derived deterministically from the namespace — no need to pass the object.
+    let group_leaver_address = derived_object::derive_address(
+        object::id(namespace),
+        group_leaver::derivation_key(),
+    );
+    group.grant_permission<Messaging, PermissionsAdmin>(group_leaver_address, ctx);
+
     // Grant MessagingReader permission to initial members (skip creator)
     initial_members.into_keys().do!(|member| {
         if (member != creator) {
@@ -151,18 +165,18 @@ public fun create_group(
 /// # Note
 /// See `create_group` for details on creator permissions and initial member handling.
 #[allow(lint(share_owned))]
-public fun create_and_share_group(
+entry fun create_and_share_group(
     namespace: &mut MessagingNamespace,
     uuid: String,
     initial_encrypted_dek: vector<u8>,
-    initial_members: VecSet<address>,
+    initial_members: vector<address>,
     ctx: &mut TxContext,
 ) {
     let (group, encryption_history) = create_group(
         namespace,
         uuid,
         initial_encrypted_dek,
-        initial_members,
+        vec_set::from_keys(initial_members),
         ctx,
     );
     transfer::public_share_object(group);
@@ -189,6 +203,32 @@ public fun rotate_encryption_key(
     encryption_history.rotate_key(new_encrypted_dek);
 }
 
+/// Removes the caller from a messaging group.
+/// The `GroupLeaver` actor holds `PermissionsAdmin` on all groups and calls
+/// `object_remove_member` on behalf of the caller.
+///
+/// # Parameters
+/// - `group_leaver`: Reference to the shared `GroupLeaver` object
+/// - `group`: Mutable reference to the `PermissionedGroup<Messaging>`
+/// - `ctx`: Transaction context
+///
+/// # Aborts
+/// - `EMemberNotFound` (from `permissioned_group`): if the caller is not a member
+/// - `ELastPermissionsAdmin` (from `permissioned_group`): if the caller is the last
+///   `PermissionsAdmin` holder (including actor objects)
+///
+/// NOTE: Because `GroupLeaver` itself holds `PermissionsAdmin` on every group, a human
+/// admin can always leave — leaving `GroupLeaver` as the sole remaining admin. A group in
+/// that state has no human admins. To promote a new human admin from that state, a
+/// dedicated actor-object wrapper over `object_grant_permission` would be needed.
+public fun leave(
+    group_leaver: &GroupLeaver,
+    group: &mut PermissionedGroup<Messaging>,
+    ctx: &TxContext,
+) {
+    group_leaver::leave<Messaging>(group_leaver, group, ctx);
+}
+
 /// Grants all messaging permissions to a member.
 /// Includes: `MessagingSender`, `MessagingReader`, `MessagingEditor`,
 /// `MessagingDeleter`, `EncryptionKeyRotator`.
@@ -199,12 +239,13 @@ public fun rotate_encryption_key(
 /// - `ctx`: Transaction context
 ///
 /// # Aborts
-/// - `ENotPermitted` (from `permissioned_group`): if caller doesn't have `Administrator`
-/// or `ExtensionPermissionsManager` permission
-public fun grant_all_messaging_permissions(
+/// - `ENotPermitted` (from `permissioned_group`): if caller doesn't have
+/// `ExtensionPermissionsAdmin`
+/// permission
+fun grant_all_messaging_permissions(
     group: &mut PermissionedGroup<Messaging>,
     member: address,
-    ctx: &mut TxContext,
+    ctx: &TxContext,
 ) {
     group.grant_permission<Messaging, MessagingSender>(member, ctx);
     group.grant_permission<Messaging, MessagingReader>(member, ctx);
@@ -212,27 +253,6 @@ public fun grant_all_messaging_permissions(
     group.grant_permission<Messaging, MessagingDeleter>(member, ctx);
     group.grant_permission<Messaging, EncryptionKeyRotator>(member, ctx);
 }
-
-/// Grants all permissions (Administrator, ExtensionPermissionsManager + messaging) to a member,
-/// making them an admin.
-///
-/// # Parameters
-/// - `group`: Mutable reference to the PermissionedGroup<Messaging>
-/// - `member`: Address to grant permissions to
-/// - `ctx`: Transaction context
-///
-/// # Aborts
-/// - `ENotPermitted` (from `permissions_group`): if caller doesn't have `Administrator` permission
-public fun grant_all_permissions(
-    group: &mut PermissionedGroup<Messaging>,
-    member: address,
-    ctx: &mut TxContext,
-) {
-    group.grant_permission<Messaging, Administrator>(member, ctx);
-    group.grant_permission<Messaging, ExtensionPermissionsManager>(member, ctx);
-    grant_all_messaging_permissions(group, member, ctx);
-}
-
 
 // === Test Helpers ===
 

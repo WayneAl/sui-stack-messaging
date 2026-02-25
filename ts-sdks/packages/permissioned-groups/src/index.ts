@@ -7,11 +7,13 @@ export { PermissionedGroupsTransactions } from './transactions.js';
 export { PermissionedGroupsView } from './view.js';
 export { PermissionedGroupsBCS } from './bcs.js';
 export { PermissionedGroupsClientError } from './error.js';
+export { permissionTypes, permissionedGroupType } from './constants.js';
 export * from './types.js';
 export type {
 	ParsedPermissionedGroup,
-	ParsedAdministrator,
-	ParsedExtensionPermissionsManager,
+	ParsedPermissionsAdmin,
+	ParsedExtensionPermissionsAdmin,
+	ParsedObjectAdmin,
 	ParsedGroupCreated,
 	ParsedGroupDerived,
 	ParsedMemberAdded,

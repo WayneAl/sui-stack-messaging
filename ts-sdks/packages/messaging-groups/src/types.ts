@@ -69,7 +69,10 @@ interface SessionKeySharedOptions {
  */
 export type SessionKeyConfig =
 	| ({ signer: Signer } & SessionKeySharedOptions)
-	| ({ address: string; onSign: (message: Uint8Array) => Promise<string> } & SessionKeySharedOptions)
+	| ({
+			address: string;
+			onSign: (message: Uint8Array) => Promise<string>;
+	  } & SessionKeySharedOptions)
 	| { getSessionKey: () => Promise<SessionKey> | SessionKey };
 
 /** Encryption-specific options for the messaging groups client. */
@@ -140,20 +143,18 @@ export interface CreateGroupCallOptions {
  */
 export type RotateEncryptionKeyCallOptions = GroupRef;
 
-/** Options for granting all messaging permissions to a member */
-export interface GrantAllMessagingPermissionsCallOptions {
-	/** Object ID or TransactionArgument for the PermissionedGroup<Messaging> */
-	groupId: string | TransactionArgument;
-	/** Address of the member to grant permissions to */
-	member: string | TransactionArgument;
+/** Options for sharing the objects returned by `createGroup`. */
+export interface ShareGroupCallOptions {
+	/** The PermissionedGroup<Messaging> result from `createGroup` */
+	group: TransactionArgument;
+	/** The EncryptionHistory result from `createGroup` */
+	encryptionHistory: TransactionArgument;
 }
 
-/** Options for granting all permissions (admin + messaging) to a member */
-export interface GrantAllPermissionsCallOptions {
+/** Options for leaving a messaging group. */
+export interface LeaveCallOptions {
 	/** Object ID or TransactionArgument for the PermissionedGroup<Messaging> */
 	groupId: string | TransactionArgument;
-	/** Address of the member to grant permissions to */
-	member: string | TransactionArgument;
 }
 
 // === Top-level Imperative Options (add signer) ===
@@ -170,14 +171,8 @@ export type RotateEncryptionKeyOptions = RotateEncryptionKeyCallOptions & {
 	signer: Signer;
 };
 
-/** Options for granting all messaging permissions (imperative) */
-export interface GrantAllMessagingPermissionsOptions extends GrantAllMessagingPermissionsCallOptions {
-	/** Signer to execute the transaction */
-	signer: Signer;
-}
-
-/** Options for granting all permissions (imperative) */
-export interface GrantAllPermissionsOptions extends GrantAllPermissionsCallOptions {
+/** Options for leaving a group (imperative) */
+export interface LeaveOptions extends LeaveCallOptions {
 	/** Signer to execute the transaction */
 	signer: Signer;
 }
