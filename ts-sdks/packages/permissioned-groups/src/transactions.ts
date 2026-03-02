@@ -14,6 +14,7 @@ import type {
 	RemoveMemberCallOptions,
 	RevokePermissionCallOptions,
 	RevokePermissionsCallOptions,
+	UnpauseCallOptions,
 } from './types.js';
 
 export interface PermissionedGroupsTransactionsOptions {
@@ -128,6 +129,18 @@ export class PermissionedGroupsTransactions {
 	objectRemoveMember(options: ObjectRemoveMemberCallOptions): Transaction {
 		const tx = new Transaction();
 		tx.add(this.#call.objectRemoveMember(options));
+		return tx;
+	}
+
+	// === Group Lifecycle Functions ===
+
+	/**
+	 * Creates a Transaction that unpauses the group.
+	 * The `unpauseCapId` must be owned by the signer.
+	 */
+	unpause(options: UnpauseCallOptions): Transaction {
+		const tx = new Transaction();
+		tx.add(this.#call.unpause(options));
 		return tx;
 	}
 }

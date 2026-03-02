@@ -6,16 +6,19 @@ import type { Transaction, TransactionResult } from '@mysten/sui/transactions';
 import * as permissionedGroup from './contracts/permissioned_groups/permissioned_group.js';
 import { permissionTypes } from './constants.js';
 import type {
+	DeleteCallOptions,
 	GrantAllPermissionsCallOptions,
 	GrantPermissionCallOptions,
 	GrantPermissionsCallOptions,
 	ObjectGrantPermissionCallOptions,
 	ObjectRemoveMemberCallOptions,
 	ObjectRevokePermissionCallOptions,
+	PauseCallOptions,
 	PermissionedGroupsPackageConfig,
 	RemoveMemberCallOptions,
 	RevokePermissionCallOptions,
 	RevokePermissionsCallOptions,
+	UnpauseCallOptions,
 } from './types.js';
 
 export interface PermissionedGroupsCallOptions {
@@ -209,6 +212,66 @@ export class PermissionedGroupsCall {
 				self: options.groupId,
 				actorObject: options.actorObjectUid,
 				member: options.member,
+			},
+			typeArguments: [this.#witnessType],
+		});
+	}
+
+	// === Group Lifecycle Functions ===
+
+	/**
+	 * Pauses the group, preventing all mutations.
+	 * Returns an `UnpauseCap<T>` that is required to unpause.
+	 *
+	 * NOTE: This returns an `UnpauseCap` object that must be handled in the same
+	 * transaction (e.g., transferred to the caller or stored as a dynamic field).
+	 * Use `tx.transferObjects` or a custom PTB step after calling this.
+	 *
+	 * Permission requirements: caller must have PermissionsAdmin.
+	 */
+	pause(options: PauseCallOptions): (tx: Transaction) => TransactionResult {
+		return permissionedGroup.pause({
+			package: this.#packageConfig.latestPackageId,
+			arguments: {
+				self: options.groupId,
+			},
+			typeArguments: [this.#witnessType],
+		});
+	}
+
+	/**
+	 * Unpauses the group. Consumes and destroys the `UnpauseCap`.
+	 *
+	 * @param options.unpauseCapId - The object ID or TransactionArgument of the UnpauseCap
+	 */
+	unpause(options: UnpauseCallOptions): (tx: Transaction) => TransactionResult {
+		return permissionedGroup.unpause({
+			package: this.#packageConfig.latestPackageId,
+			arguments: {
+				self: options.groupId,
+				cap: options.unpauseCapId,
+			},
+			typeArguments: [this.#witnessType],
+		});
+	}
+
+	/**
+	 * Deletes the group, returning its components as a PTB tuple.
+	 *
+	 * NOTE: `delete` returns `(PermissionsTable, u64, address)` from Move.
+	 * There is no high-level imperative variant — callers must compose this with
+	 * additional PTB steps to handle the returned PermissionsTable
+	 * (e.g., `permissions_table::destroy_empty`). This is intentional: only
+	 * an extending contract that knows about any dynamic fields on the group
+	 * can safely complete the deletion.
+	 *
+	 * Permission requirements: caller must have GroupDeleter permission.
+	 */
+	delete(options: DeleteCallOptions): (tx: Transaction) => TransactionResult {
+		return permissionedGroup._delete({
+			package: this.#packageConfig.latestPackageId,
+			arguments: {
+				self: options.groupId,
 			},
 			typeArguments: [this.#witnessType],
 		});

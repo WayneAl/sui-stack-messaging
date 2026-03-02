@@ -23,6 +23,7 @@ import type {
 	RemoveMemberOptions,
 	RevokePermissionOptions,
 	RevokePermissionsOptions,
+	UnpauseOptions,
 } from './types.js';
 import { PermissionedGroupsCall } from './call.js';
 import { PermissionedGroupsTransactions } from './transactions.js';
@@ -241,5 +242,15 @@ export class PermissionedGroupsClient {
 		const { signer, ...callOptions } = options;
 		const transaction = this.tx.objectRemoveMember(callOptions);
 		return this.#executeTransaction(transaction, signer, 'object remove member');
+	}
+
+	/**
+	 * Unpauses the group. Consumes and destroys the `UnpauseCap`.
+	 * The signer must own the `UnpauseCap` object.
+	 */
+	async unpause(options: UnpauseOptions) {
+		const { signer, ...callOptions } = options;
+		const transaction = this.tx.unpause(callOptions);
+		return this.#executeTransaction(transaction, signer, 'unpause group');
 	}
 }

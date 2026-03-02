@@ -6,23 +6,12 @@ import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { fromHex } from '@mysten/sui/utils';
 import { EncryptedObject } from '@mysten/seal';
 import { DefaultSealPolicy, messagingPermissionTypes } from '@mysten/messaging-groups';
-import { requestSuiFromFaucetV2 } from '@mysten/sui/faucet';
 
 import {
 	createMessagingGroupsClient,
 	type MessagingGroupsTestClient,
 } from '../../src/helpers/index.js';
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-async function fundNewKeypair(faucetUrl: string): Promise<Ed25519Keypair> {
-	const keypair = new Ed25519Keypair();
-	await requestSuiFromFaucetV2({
-		host: faucetUrl,
-		recipient: keypair.getPublicKey().toSuiAddress(),
-	});
-	return keypair;
-}
+import { createFundedAccount } from '../../src/fixtures/index.js';
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
@@ -71,7 +60,7 @@ describe('Full Flows', () => {
 
 	describe('group creation', () => {
 		it('should create a messaging group transaction', () => {
-			const tx = adminClient.messaging.tx.createAndShareGroup();
+			const tx = adminClient.messaging.tx.createAndShareGroup({ name: 'Test Group' });
 			expect(tx).toBeDefined();
 			expect(tx.getData).toBeDefined();
 		});
@@ -82,6 +71,7 @@ describe('Full Flows', () => {
 			const { digest, effects } = await adminClient.messaging.createAndShareGroup({
 				signer: adminKeypair,
 				uuid,
+				name: 'Test Group',
 			});
 
 			expect(digest).toBeDefined();
@@ -109,6 +99,7 @@ describe('Full Flows', () => {
 			await adminClient.messaging.createAndShareGroup({
 				signer: adminKeypair,
 				uuid,
+				name: 'Test Group',
 			});
 
 			const encryptedKeyBytes = await adminClient.messaging.view.currentEncryptedKey({
@@ -136,6 +127,7 @@ describe('Full Flows', () => {
 			await adminClient.messaging.createAndShareGroup({
 				signer: adminKeypair,
 				uuid,
+				name: 'Test Group',
 			});
 
 			const groupId = adminClient.messaging.derive.groupId({ uuid });
@@ -174,6 +166,7 @@ describe('Full Flows', () => {
 			await adminClient.messaging.createAndShareGroup({
 				signer: adminKeypair,
 				uuid,
+				name: 'Test Group',
 			});
 
 			const groupId = adminClient.messaging.derive.groupId({ uuid });
@@ -206,6 +199,7 @@ describe('Full Flows', () => {
 			await adminClient.messaging.createAndShareGroup({
 				signer: adminKeypair,
 				uuid,
+				name: 'Test Group',
 			});
 
 			const groupId = adminClient.messaging.derive.groupId({ uuid });
@@ -227,12 +221,12 @@ describe('Full Flows', () => {
 			expect(adminDek).toEqual(new TextEncoder().encode('test'));
 
 			// Non-member should be denied
-			const outsiderKeypair = await fundNewKeypair(faucetUrl);
+			const outsider = await createFundedAccount({ faucetUrl });
 			const outsiderClient = createMessagingGroupsClient({
 				...clientConfig,
 				url: clientConfig.suiClientUrl,
 				network: 'localnet',
-				keypair: outsiderKeypair,
+				keypair: outsider.keypair,
 			});
 
 			await expect(
@@ -251,6 +245,7 @@ describe('Full Flows', () => {
 			await adminClient.messaging.createAndShareGroup({
 				signer: adminKeypair,
 				uuid,
+				name: 'Test Group',
 			});
 
 			const groupId = adminClient.messaging.derive.groupId({ uuid });
@@ -258,8 +253,9 @@ describe('Full Flows', () => {
 				uuid,
 			});
 
-			const memberKeypair = await fundNewKeypair(faucetUrl);
-			const memberAddress = memberKeypair.getPublicKey().toSuiAddress();
+			const member = await createFundedAccount({ faucetUrl });
+			const memberKeypair = member.keypair;
+			const memberAddress = member.address;
 			const memberClient = createMessagingGroupsClient({
 				...clientConfig,
 				url: clientConfig.suiClientUrl,
@@ -310,6 +306,7 @@ describe('Full Flows', () => {
 			await adminClient.messaging.createAndShareGroup({
 				signer: adminKeypair,
 				uuid,
+				name: 'Test Group',
 			});
 
 			const groupId = adminClient.messaging.derive.groupId({ uuid });
@@ -389,13 +386,15 @@ describe('Full Flows', () => {
 			await adminClient.messaging.createAndShareGroup({
 				signer: adminKeypair,
 				uuid,
+				name: 'Test Group',
 			});
 
 			const groupId = adminClient.messaging.derive.groupId({ uuid });
 
 			// Fund a member and add them to the group
-			const memberKeypair = await fundNewKeypair(faucetUrl);
-			const memberAddress = memberKeypair.getPublicKey().toSuiAddress();
+			const member = await createFundedAccount({ faucetUrl });
+			const memberKeypair = member.keypair;
+			const memberAddress = member.address;
 			const memberClient = createMessagingGroupsClient({
 				...clientConfig,
 				url: clientConfig.suiClientUrl,
@@ -410,9 +409,7 @@ describe('Full Flows', () => {
 				permissionTypes: Object.values(messagingPermissionTypes(messagingPackageId)),
 			});
 
-			expect(
-				await adminClient.groups.view.isMember({ groupId, member: memberAddress }),
-			).toBe(true);
+			expect(await adminClient.groups.view.isMember({ groupId, member: memberAddress })).toBe(true);
 
 			// Member leaves via the messaging leave (GroupLeaver actor)
 			await memberClient.messaging.leave({
@@ -420,9 +417,9 @@ describe('Full Flows', () => {
 				groupId,
 			});
 
-			expect(
-				await adminClient.groups.view.isMember({ groupId, member: memberAddress }),
-			).toBe(false);
+			expect(await adminClient.groups.view.isMember({ groupId, member: memberAddress })).toBe(
+				false,
+			);
 		});
 
 		it('should allow the last human admin to leave (GroupLeaver retains PermissionsAdmin)', async () => {
@@ -431,6 +428,7 @@ describe('Full Flows', () => {
 			await adminClient.messaging.createAndShareGroup({
 				signer: adminKeypair,
 				uuid,
+				name: 'Test Group',
 			});
 
 			const groupId = adminClient.messaging.derive.groupId({ uuid });
@@ -458,6 +456,7 @@ describe('Full Flows', () => {
 			await adminClient.messaging.createAndShareGroup({
 				signer: adminKeypair,
 				uuid,
+				name: 'Test Group',
 			});
 
 			const groupId = adminClient.messaging.derive.groupId({ uuid });
@@ -466,8 +465,9 @@ describe('Full Flows', () => {
 			});
 
 			// Add a member
-			const memberKeypair = await fundNewKeypair(faucetUrl);
-			const memberAddress = memberKeypair.getPublicKey().toSuiAddress();
+			const member = await createFundedAccount({ faucetUrl });
+			const memberKeypair = member.keypair;
+			const memberAddress = member.address;
 			const memberClient = createMessagingGroupsClient({
 				...clientConfig,
 				url: clientConfig.suiClientUrl,

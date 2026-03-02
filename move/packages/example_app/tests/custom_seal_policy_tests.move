@@ -4,6 +4,7 @@ module example_app::custom_seal_policy_tests;
 use permissioned_groups::permissioned_group::PermissionedGroup;
 use messaging::messaging::{Self, Messaging, MessagingNamespace};
 use messaging::encryption_history::EncryptionHistory;
+use messaging::group_manager::GroupManager;
 use messaging::version::{Self, Version};
 use sui::vec_set;
 use example_app::custom_seal_policy;
@@ -42,9 +43,12 @@ fun setup_group(ts: &mut Scenario): (ID, ID) {
     ts.next_tx(ALICE);
     let mut namespace = ts.take_shared<MessagingNamespace>();
     let version = ts.take_shared<Version>();
+    let group_manager = ts.take_shared<GroupManager>();
     let (group, encryption_history) = messaging::create_group(
         &version,
         &mut namespace,
+        &group_manager,
+        string::utf8(b"Test Group"),
         string::utf8(TEST_UUID),
         b"test_encrypted_dek",
         vec_set::empty(),
@@ -55,6 +59,7 @@ fun setup_group(ts: &mut Scenario): (ID, ID) {
     transfer::public_share_object(group);
     transfer::public_share_object(encryption_history);
     ts::return_shared(version);
+    ts::return_shared(group_manager);
     ts::return_shared(namespace);
 
     (group_id, encryption_history_id)
@@ -183,9 +188,12 @@ fun seal_approve_wrong_group() {
     ts.next_tx(ALICE);
     let mut namespace = ts.take_shared<MessagingNamespace>();
     let version = ts.take_shared<Version>();
+    let group_manager = ts.take_shared<GroupManager>();
     let (group1, encryption_history1) = messaging::create_group(
         &version,
         &mut namespace,
+        &group_manager,
+        string::utf8(b"Group 1"),
         string::utf8(TEST_UUID_2),
         b"test_encrypted_dek_1",
         vec_set::empty(),
@@ -198,6 +206,8 @@ fun seal_approve_wrong_group() {
     let (group2, encryption_history2) = messaging::create_group(
         &version,
         &mut namespace,
+        &group_manager,
+        string::utf8(b"Group 2"),
         string::utf8(TEST_UUID_3),
         b"test_encrypted_dek_2",
         vec_set::empty(),
@@ -208,6 +218,7 @@ fun seal_approve_wrong_group() {
     transfer::public_share_object(group2);
     transfer::public_share_object(encryption_history2);
     ts::return_shared(version);
+    ts::return_shared(group_manager);
     ts::return_shared(namespace);
 
     // Service is linked to group1

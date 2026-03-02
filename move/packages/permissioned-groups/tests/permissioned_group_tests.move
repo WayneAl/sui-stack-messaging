@@ -6,7 +6,10 @@ use permissioned_groups::permissioned_group::{
     PermissionedGroup,
     PermissionsAdmin,
     ExtensionPermissionsAdmin,
+    GroupDeleter
 };
+use permissioned_groups::permissions_table;
+use permissioned_groups::unpause_cap::UnpauseCap;
 use std::unit_test::{assert_eq, destroy};
 use sui::test_scenario as ts;
 
@@ -113,21 +116,19 @@ fun grant_administrator_increments_count() {
     ts.end();
 }
 
-// LIMITATION: CustomPermission is in the same package as permissioned_groups, so
-// `is_core_permission` treats it as a core permission. In production, extension permissions
-// are defined in downstream packages. We use PermissionsAdmin here to work around this.
 #[test]
-fun permissions_admin_can_grant_custom_permission() {
+fun extension_admin_can_grant_custom_permission() {
     let mut ts = ts::begin(ALICE);
 
     ts.next_tx(ALICE);
     let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
 
-    // Grant PermissionsAdmin to Bob
-    group.grant_permission<TestWitness, PermissionsAdmin>(BOB, ts.ctx());
+    // Grant ExtensionPermissionsAdmin to Bob
+    group.grant_permission<TestWitness, ExtensionPermissionsAdmin>(BOB, ts.ctx());
     transfer::public_share_object(group);
 
-    // Bob grants CustomPermission to Charlie (see LIMITATION above)
+    // Bob grants CustomPermission to Charlie (extension permission — requires
+    // ExtensionPermissionsAdmin)
     ts.next_tx(BOB);
     let mut group = ts.take_shared<PermissionedGroup<TestWitness>>();
     group.grant_permission<TestWitness, CustomPermission>(CHARLIE, ts.ctx());
@@ -255,18 +256,19 @@ fun revoke_last_administrator_fails() {
 }
 
 #[test]
-fun permissions_admin_can_revoke_custom_permission() {
+fun extension_admin_can_revoke_custom_permission() {
     let mut ts = ts::begin(ALICE);
 
     ts.next_tx(ALICE);
     let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
 
-    // Grant PermissionsAdmin to Bob and CustomPermission to Charlie
-    group.grant_permission<TestWitness, PermissionsAdmin>(BOB, ts.ctx());
+    // Grant ExtensionPermissionsAdmin to Bob and CustomPermission to Charlie
+    group.grant_permission<TestWitness, ExtensionPermissionsAdmin>(BOB, ts.ctx());
     group.grant_permission<TestWitness, CustomPermission>(CHARLIE, ts.ctx());
     transfer::public_share_object(group);
 
-    // Bob revokes Charlie's CustomPermission (see LIMITATION in permissions_admin_can_grant_custom_permission)
+    // Bob revokes Charlie's CustomPermission (extension permission — requires
+    // ExtensionPermissionsAdmin)
     ts.next_tx(BOB);
     let mut group = ts.take_shared<PermissionedGroup<TestWitness>>();
     group.revoke_permission<TestWitness, CustomPermission>(CHARLIE, ts.ctx());
@@ -527,12 +529,76 @@ fun new_derived_duplicate_key_fails() {
     abort
 }
 
+// === member_count / permissions_table::length() tests ===
+
+#[test]
+fun member_count_reflects_adds_and_removes() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+
+    // Creator counts as 1 member
+    assert_eq!(group.member_count<TestWitness>(), 1);
+
+    // Add Bob → 2 members
+    group.grant_permission<TestWitness, CustomPermission>(BOB, ts.ctx());
+    assert_eq!(group.member_count<TestWitness>(), 2);
+
+    // Add Charlie → 3 members
+    group.grant_permission<TestWitness, CustomPermission>(CHARLIE, ts.ctx());
+    assert_eq!(group.member_count<TestWitness>(), 3);
+
+    // Remove Charlie → 2 members
+    group.remove_member<TestWitness>(CHARLIE, ts.ctx());
+    assert_eq!(group.member_count<TestWitness>(), 2);
+
+    // Revoke Bob's last permission (auto-removes) → 1 member
+    group.revoke_permission<TestWitness, CustomPermission>(BOB, ts.ctx());
+    assert_eq!(group.member_count<TestWitness>(), 1);
+
+    destroy(group);
+    ts.end();
+}
+
+// === Duplicate grant test ===
+
+#[test, expected_failure(abort_code = sui::vec_set::EKeyAlreadyExists)]
+fun grant_same_permission_twice_fails() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+
+    // Grant CustomPermission to Bob once — succeeds
+    group.grant_permission<TestWitness, CustomPermission>(BOB, ts.ctx());
+
+    // Grant the same permission again — aborts with vec_set::EKeyAlreadyExists
+    group.grant_permission<TestWitness, CustomPermission>(BOB, ts.ctx());
+
+    abort
+}
+
 // === Permission scoping tests ===
 
-// LIMITATION: `permissions_admin_cannot_manage_extension_permission` cannot be tested here because
-// `CustomPermission` is in the same package as permissioned_groups, so `is_core_permission` treats
-// it as a core permission. Extension permission scoping is tested in downstream packages
-// (messaging, example_app) where permissions are defined in separate packages.
+#[test, expected_failure(abort_code = permissioned_group::ENotPermitted)]
+fun permissions_admin_cannot_manage_extension_permission() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+
+    // Grant only PermissionsAdmin to Bob (not ExtensionPermissionsAdmin)
+    group.grant_permission<TestWitness, PermissionsAdmin>(BOB, ts.ctx());
+    transfer::public_share_object(group);
+
+    // Bob tries to grant CustomPermission (extension) — should fail
+    ts.next_tx(BOB);
+    let mut group = ts.take_shared<PermissionedGroup<TestWitness>>();
+    group.grant_permission<TestWitness, CustomPermission>(CHARLIE, ts.ctx());
+
+    abort
+}
 
 #[test, expected_failure(abort_code = permissioned_group::ENotPermitted)]
 fun extension_admin_cannot_manage_core_permission() {
@@ -551,4 +617,258 @@ fun extension_admin_cannot_manage_core_permission() {
     group.grant_permission<TestWitness, PermissionsAdmin>(CHARLIE, ts.ctx());
 
     abort
+}
+
+// === delete tests ===
+
+#[test]
+fun delete_returns_components() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+
+    // Creator does NOT auto-get GroupDeleter — must grant explicitly
+    group.grant_permission<TestWitness, GroupDeleter>(ALICE, ts.ctx());
+    let (permissions, admin_count, creator) = group.delete<TestWitness>(ts.ctx());
+
+    assert_eq!(admin_count, 1);
+    assert_eq!(creator, ALICE);
+
+    // Table still has members, so we can't destroy_empty — use test destroy
+    destroy(permissions);
+    ts.end();
+}
+
+#[test, expected_failure(abort_code = permissioned_group::ENotPermitted)]
+fun delete_without_group_deleter_aborts() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+
+    // Grant Bob only CustomPermission (no GroupDeleter)
+    group.grant_permission<TestWitness, CustomPermission>(BOB, ts.ctx());
+    transfer::public_share_object(group);
+
+    // Bob tries to delete — should fail (no GroupDeleter permission)
+    ts.next_tx(BOB);
+    let group = ts.take_shared<PermissionedGroup<TestWitness>>();
+    let (_permissions, _admin_count, _creator) = group.delete<TestWitness>(ts.ctx());
+
+    abort
+}
+
+#[test]
+fun group_deleter_is_core_permission() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+
+    // PermissionsAdmin can grant GroupDeleter (core permission)
+    group.grant_permission<TestWitness, GroupDeleter>(BOB, ts.ctx());
+    assert!(group.has_permission<TestWitness, GroupDeleter>(BOB));
+
+    // PermissionsAdmin can revoke GroupDeleter
+    group.revoke_permission<TestWitness, GroupDeleter>(BOB, ts.ctx());
+    assert!(!group.is_member(BOB));
+
+    destroy(group);
+    ts.end();
+}
+
+// === permissions_table destroy_empty tests ===
+
+#[test]
+fun permissions_table_destroy_empty_succeeds() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+
+    // Grant Bob PermissionsAdmin and GroupDeleter, then remove Alice
+    group.grant_permission<TestWitness, PermissionsAdmin>(BOB, ts.ctx());
+    group.grant_permission<TestWitness, GroupDeleter>(BOB, ts.ctx());
+    group.remove_member<TestWitness>(ALICE, ts.ctx());
+    transfer::public_share_object(group);
+
+    // Bob deletes the group (he has GroupDeleter)
+    ts.next_tx(BOB);
+    let group = ts.take_shared<PermissionedGroup<TestWitness>>();
+    let (mut permissions, _admin_count, _creator) = group.delete<TestWitness>(ts.ctx());
+
+    // Remove Bob from the permissions table
+    permissions.remove_member(BOB);
+
+    // Now table is empty, destroy_empty should succeed
+    permissions.destroy_empty();
+
+    ts.end();
+}
+
+#[test, expected_failure(abort_code = permissions_table::EPermissionsTableNotEmpty)]
+fun permissions_table_destroy_empty_aborts_when_not_empty() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+
+    // Grant Alice GroupDeleter so she can delete
+    group.grant_permission<TestWitness, GroupDeleter>(ALICE, ts.ctx());
+
+    // Delete group — Alice is still a member in the returned table
+    let (permissions, _admin_count, _creator) = group.delete<TestWitness>(ts.ctx());
+
+    // Should abort because table still has Alice
+    permissions.destroy_empty();
+
+    abort
+}
+
+// === pause/unpause tests ===
+
+#[test]
+fun pause_sets_marker_and_returns_cap() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+
+    assert!(!group.is_paused());
+    let cap = group.pause<TestWitness>(ts.ctx());
+    assert!(group.is_paused());
+
+    destroy(cap);
+    destroy(group);
+    ts.end();
+}
+
+#[test]
+fun unpause_clears_marker_and_consumes_cap() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+
+    let cap = group.pause<TestWitness>(ts.ctx());
+    assert!(group.is_paused());
+
+    group.unpause<TestWitness>(cap, ts.ctx());
+    assert!(!group.is_paused());
+
+    destroy(group);
+    ts.end();
+}
+
+#[test, expected_failure(abort_code = permissioned_group::ENotPermitted)]
+fun pause_without_permissions_admin_aborts() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+
+    // Grant Bob only CustomPermission (no PermissionsAdmin)
+    group.grant_permission<TestWitness, CustomPermission>(BOB, ts.ctx());
+    transfer::public_share_object(group);
+
+    // Bob tries to pause — should fail
+    ts.next_tx(BOB);
+    let mut group = ts.take_shared<PermissionedGroup<TestWitness>>();
+    let _cap = group.pause<TestWitness>(ts.ctx());
+
+    abort
+}
+
+#[test, expected_failure(abort_code = permissioned_group::EAlreadyPaused)]
+fun pause_already_paused_aborts() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+
+    let cap = group.pause<TestWitness>(ts.ctx());
+    // Pause again — should fail
+    let _cap2 = group.pause<TestWitness>(ts.ctx());
+
+    destroy(cap);
+    abort
+}
+
+#[test, expected_failure(abort_code = permissioned_group::EGroupPaused)]
+fun grant_permission_on_paused_group_aborts() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+    let cap = group.pause<TestWitness>(ts.ctx());
+
+    // Try to grant — should fail
+    group.grant_permission<TestWitness, CustomPermission>(BOB, ts.ctx());
+
+    destroy(cap);
+    abort
+}
+
+#[test]
+fun paused_group_reads_still_work() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+    group.grant_permission<TestWitness, CustomPermission>(BOB, ts.ctx());
+    let cap = group.pause<TestWitness>(ts.ctx());
+
+    // All read operations should still work on a paused group
+    assert!(group.has_permission<TestWitness, PermissionsAdmin>(ALICE));
+    assert!(group.has_permission<TestWitness, CustomPermission>(BOB));
+    assert!(group.is_member(ALICE));
+    assert!(group.is_member(BOB));
+    assert!(!group.is_member(CHARLIE));
+    assert_eq!(group.creator<TestWitness>(), ALICE);
+    assert_eq!(group.permissions_admin_count<TestWitness>(), 1);
+    assert!(group.is_paused());
+
+    destroy(cap);
+    destroy(group);
+    ts.end();
+}
+
+#[test, expected_failure(abort_code = permissioned_group::EGroupIdMismatch)]
+fun unpause_with_wrong_cap_aborts() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    // Create two groups
+    let mut group1 = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+    let mut group2 = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+
+    // Pause both, get caps
+    let cap1 = group1.pause<TestWitness>(ts.ctx());
+    let _cap2 = group2.pause<TestWitness>(ts.ctx());
+
+    // Try to unpause group2 with cap1 — should fail
+    group2.unpause<TestWitness>(cap1, ts.ctx());
+
+    abort
+}
+
+#[test]
+fun burn_unpause_cap_makes_pause_permanent() {
+    let mut ts = ts::begin(ALICE);
+
+    ts.next_tx(ALICE);
+    let mut group = permissioned_group::new<TestWitness>(TestWitness(), ts.ctx());
+
+    let cap: UnpauseCap<TestWitness> = group.pause<TestWitness>(ts.ctx());
+    assert!(group.is_paused());
+
+    // Burn the cap — unpause is now impossible
+    permissioned_groups::unpause_cap::burn(cap);
+
+    // Group remains paused
+    assert!(group.is_paused());
+
+    destroy(group);
+    ts.end();
 }

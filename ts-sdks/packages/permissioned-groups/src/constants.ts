@@ -20,6 +20,16 @@ export const MAINNET_PERMISSIONED_GROUPS_PACKAGE_CONFIG = {
 export const PERMISSIONS_TABLE_DERIVATION_KEY = 'permissions_table';
 
 /**
+ * Returns the full Move type name for the `PausedMarker` struct.
+ * Used to derive the dynamic field ID that indicates a paused group.
+ *
+ * @param packageId - The **original (V1)** permissioned-groups package ID.
+ */
+export function pausedMarkerType(packageId: string): string {
+	return `${packageId}::permissioned_group::PausedMarker`;
+}
+
+/**
  * Returns full Move type paths for all core permissions defined in the permissioned-groups package.
  *
  * @param packageId - The **original (V1)** package ID. The TypeNames stored in the
@@ -41,6 +51,7 @@ export function permissionTypes(packageId: string) {
 		PermissionsAdmin: `${packageId}::permissioned_group::PermissionsAdmin`,
 		ExtensionPermissionsAdmin: `${packageId}::permissioned_group::ExtensionPermissionsAdmin`,
 		ObjectAdmin: `${packageId}::permissioned_group::ObjectAdmin`,
+		GroupDeleter: `${packageId}::permissioned_group::GroupDeleter`,
 	} as const;
 }
 

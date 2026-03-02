@@ -16,13 +16,17 @@ import {
 } from './constants.js';
 import { EnvelopeEncryption } from './encryption/envelope-encryption.js';
 import type {
+	ArchiveGroupOptions,
 	CreateGroupOptions,
+	InsertGroupDataOptions,
 	LeaveOptions,
 	MessagingGroupsClientOptions,
 	MessagingGroupsCompatibleClient,
 	MessagingGroupsEncryptionOptions,
 	MessagingGroupsPackageConfig,
+	RemoveGroupDataOptions,
 	RotateEncryptionKeyOptions,
+	SetGroupNameOptions,
 	SetSuinsReverseLookupOptions,
 	UnsetSuinsReverseLookupOptions,
 } from './types.js';
@@ -264,6 +268,52 @@ export class MessagingGroupsClient<TApproveContext = void> {
 		const { signer, ...callOptions } = options;
 		const transaction = this.tx.leave(callOptions);
 		return this.#executeTransaction(transaction, signer, 'leave group');
+	}
+
+	// === Archive Methods ===
+
+	/**
+	 * Permanently archives a messaging group.
+	 * Requires `PermissionsAdmin` permission.
+	 *
+	 * After this call the group is paused and cannot be mutated.
+	 */
+	async archiveGroup(options: ArchiveGroupOptions) {
+		const { signer, ...callOptions } = options;
+		const transaction = this.tx.archiveGroup(callOptions);
+		return this.#executeTransaction(transaction, signer, 'archive group');
+	}
+
+	// === Metadata Methods ===
+
+	/**
+	 * Sets the group name.
+	 * Requires `MetadataAdmin` permission.
+	 */
+	async setGroupName(options: SetGroupNameOptions) {
+		const { signer, ...callOptions } = options;
+		const transaction = this.tx.setGroupName(callOptions);
+		return this.#executeTransaction(transaction, signer, 'set group name');
+	}
+
+	/**
+	 * Inserts a key-value pair into the group's metadata data map.
+	 * Requires `MetadataAdmin` permission.
+	 */
+	async insertGroupData(options: InsertGroupDataOptions) {
+		const { signer, ...callOptions } = options;
+		const transaction = this.tx.insertGroupData(callOptions);
+		return this.#executeTransaction(transaction, signer, 'insert group data');
+	}
+
+	/**
+	 * Removes a key-value pair from the group's metadata data map.
+	 * Requires `MetadataAdmin` permission.
+	 */
+	async removeGroupData(options: RemoveGroupDataOptions) {
+		const { signer, ...callOptions } = options;
+		const transaction = this.tx.removeGroupData(callOptions);
+		return this.#executeTransaction(transaction, signer, 'remove group data');
 	}
 
 	// === SuiNS Reverse Lookup Methods ===

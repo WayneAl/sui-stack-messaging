@@ -12,7 +12,8 @@
  * Core permissions (defined in this package):
  *
  * - `PermissionsAdmin`: Manages core permissions. Can grant/revoke
- *   PermissionsAdmin, ExtensionPermissionsAdmin, ObjectAdmin. Can remove members.
+ *   PermissionsAdmin, ExtensionPermissionsAdmin, ObjectAdmin, Destroyer. Can
+ *   remove members.
  * - `ExtensionPermissionsAdmin`: Manages extension permissions defined in
  *   third-party packages.
  * - `ObjectAdmin`: Admin-tier permission granting raw `&mut UID` access to the
@@ -21,11 +22,12 @@
  *   actor-object pattern (`object_uid` / `object_uid_mut`), which forces extending
  *   contracts to explicitly reason about the implications of mutating the group
  *   object.
+ * - `GroupDeleter`: Permission that allows destroying the group via `delete()`.
  *
  * ## Permission Scoping
  *
  * - `PermissionsAdmin` can ONLY manage core permissions (from this package):
- *   PermissionsAdmin, ExtensionPermissionsAdmin, ObjectAdmin
+ *   PermissionsAdmin, ExtensionPermissionsAdmin, ObjectAdmin, Destroyer
  * - `ExtensionPermissionsAdmin` can ONLY manage extension permissions (from other
  *   packages)
  *
@@ -68,6 +70,10 @@ export const ObjectAdmin = new MoveTuple({
 	name: `${$moduleName}::ObjectAdmin`,
 	fields: [bcs.bool()],
 });
+export const GroupDeleter = new MoveTuple({
+	name: `${$moduleName}::GroupDeleter`,
+	fields: [bcs.bool()],
+});
 /**
  * Group state mapping addresses to their granted permissions. Parameterized by `T`
  * to scope permissions to a specific package.
@@ -89,6 +95,10 @@ export function PermissionedGroup<T extends BcsType<any>>(...typeParameters: [T]
 		},
 	});
 }
+export const PausedMarker = new MoveTuple({
+	name: `${$moduleName}::PausedMarker`,
+	fields: [bcs.bool()],
+});
 /** Emitted when a new PermissionedGroup is created via `new`. */
 export function GroupCreated<T extends BcsType<any>>(...typeParameters: [T]) {
 	return new MoveStruct({
@@ -171,6 +181,38 @@ export function PermissionsRevoked<T extends BcsType<any>>(...typeParameters: [T
 		},
 	});
 }
+/** Emitted when a PermissionedGroup is deleted via `delete`. */
+export function GroupDeleted<T extends BcsType<any>>(...typeParameters: [T]) {
+	return new MoveStruct({
+		name: `${$moduleName}::GroupDeleted<${typeParameters[0].name as T['name']}>`,
+		fields: {
+			/** ID of the deleted group. */
+			group_id: bcs.Address,
+			/** Address of the caller who deleted the group. */
+			deleter: bcs.Address,
+		},
+	});
+}
+/** Emitted when a PermissionedGroup is paused via `pause`. */
+export function GroupPaused<T extends BcsType<any>>(...typeParameters: [T]) {
+	return new MoveStruct({
+		name: `${$moduleName}::GroupPaused<${typeParameters[0].name as T['name']}>`,
+		fields: {
+			group_id: bcs.Address,
+			paused_by: bcs.Address,
+		},
+	});
+}
+/** Emitted when a PermissionedGroup is unpaused via `unpause`. */
+export function GroupUnpaused<T extends BcsType<any>>(...typeParameters: [T]) {
+	return new MoveStruct({
+		name: `${$moduleName}::GroupUnpaused<${typeParameters[0].name as T['name']}>`,
+		fields: {
+			group_id: bcs.Address,
+			unpaused_by: bcs.Address,
+		},
+	});
+}
 export interface NewArguments<T extends BcsType<any>> {
 	Witness: RawTransactionArgument<T>;
 }
@@ -181,7 +223,7 @@ export interface NewOptions<T extends BcsType<any>> {
 }
 /**
  * Creates a new PermissionedGroup with the sender as initial admin. Grants
- * `PermissionsAdmin` and `ExtensionPermissionsAdmin` to creator.
+ * `PermissionsAdmin`, `ExtensionPermissionsAdmin`, and `Destroyer` to creator.
  *
  * # Type Parameters
  *
@@ -228,7 +270,7 @@ export interface NewDerivedOptions<T extends BcsType<any>, DerivationKey extends
 }
 /**
  * Creates a new derived PermissionedGroup with deterministic address. Grants
- * `PermissionsAdmin` and `ExtensionPermissionsAdmin` to creator.
+ * `PermissionsAdmin`, `ExtensionPermissionsAdmin`, and `Destroyer` to creator.
  *
  * # Type Parameters
  *
@@ -265,6 +307,135 @@ export function newDerived<T extends BcsType<any>, DerivationKey extends BcsType
 			package: packageAddress,
 			module: 'permissioned_group',
 			function: 'new_derived',
+			arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+			typeArguments: options.typeArguments,
+		});
+}
+export interface DeleteArguments {
+	self: RawTransactionArgument<string>;
+}
+export interface DeleteOptions {
+	package?: string;
+	arguments: DeleteArguments | [self: RawTransactionArgument<string>];
+	typeArguments: [string];
+}
+/**
+ * Deletes a PermissionedGroup, returning its components. Checks that
+ * `ctx.sender()` has `GroupDeleter` permission. Caller must extract any dynamic
+ * fields BEFORE calling this (the UID is deleted).
+ *
+ * # Type Parameters
+ *
+ * - `T`: Package witness type
+ *
+ * # Parameters
+ *
+ * - `self`: The PermissionedGroup to delete (by value)
+ * - `ctx`: Transaction context
+ *
+ * # Returns
+ *
+ * Tuple of (PermissionsTable, permissions_admin_count, creator)
+ *
+ * # Aborts
+ *
+ * - `ENotPermitted`: if caller doesn't have `GroupDeleter` permission
+ */
+export function _delete(options: DeleteOptions) {
+	const packageAddress = options.package ?? '@local-pkg/permissioned-groups';
+	const argumentsTypes = [null] satisfies (string | null)[];
+	const parameterNames = ['self'];
+	return (tx: Transaction) =>
+		tx.moveCall({
+			package: packageAddress,
+			module: 'permissioned_group',
+			function: 'delete',
+			arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+			typeArguments: options.typeArguments,
+		});
+}
+export interface PauseArguments {
+	self: RawTransactionArgument<string>;
+}
+export interface PauseOptions {
+	package?: string;
+	arguments: PauseArguments | [self: RawTransactionArgument<string>];
+	typeArguments: [string];
+}
+/**
+ * Pauses the group, preventing all mutations. Returns an `UnpauseCap<T>` that is
+ * required to unpause.
+ *
+ * To use as an emergency fix: pause → fix state in a PTB → unpause. To archive
+ * (messaging layer): pause → store the returned cap as a DOF.
+ *
+ * # Aborts
+ *
+ * - `ENotPermitted`: if caller doesn't have `PermissionsAdmin`
+ * - `EAlreadyPaused`: if the group is already paused
+ */
+export function pause(options: PauseOptions) {
+	const packageAddress = options.package ?? '@local-pkg/permissioned-groups';
+	const argumentsTypes = [null] satisfies (string | null)[];
+	const parameterNames = ['self'];
+	return (tx: Transaction) =>
+		tx.moveCall({
+			package: packageAddress,
+			module: 'permissioned_group',
+			function: 'pause',
+			arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+			typeArguments: options.typeArguments,
+		});
+}
+export interface UnpauseArguments {
+	self: RawTransactionArgument<string>;
+	cap: RawTransactionArgument<string>;
+}
+export interface UnpauseOptions {
+	package?: string;
+	arguments:
+		| UnpauseArguments
+		| [self: RawTransactionArgument<string>, cap: RawTransactionArgument<string>];
+	typeArguments: [string];
+}
+/**
+ * Unpauses the group. Consumes and destroys the `UnpauseCap`.
+ *
+ * # Aborts
+ *
+ * - `EGroupIdMismatch`: if the cap belongs to a different group
+ */
+export function unpause(options: UnpauseOptions) {
+	const packageAddress = options.package ?? '@local-pkg/permissioned-groups';
+	const argumentsTypes = [null, null] satisfies (string | null)[];
+	const parameterNames = ['self', 'cap'];
+	return (tx: Transaction) =>
+		tx.moveCall({
+			package: packageAddress,
+			module: 'permissioned_group',
+			function: 'unpause',
+			arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+			typeArguments: options.typeArguments,
+		});
+}
+export interface IsPausedArguments {
+	self: RawTransactionArgument<string>;
+}
+export interface IsPausedOptions {
+	package?: string;
+	arguments: IsPausedArguments | [self: RawTransactionArgument<string>];
+	typeArguments: [string];
+}
+/** Returns whether the group is currently paused. */
+export function isPaused(options: IsPausedOptions) {
+	const packageAddress = options.package ?? '@local-pkg/permissioned-groups';
+	const argumentsTypes = [null] satisfies (string | null)[];
+	const parameterNames = ['self'];
+	return (tx: Transaction) =>
+		tx.moveCall({
+			package: packageAddress,
+			module: 'permissioned_group',
+			function: 'is_paused',
 			arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
 			typeArguments: options.typeArguments,
 		});

@@ -49,6 +49,7 @@ describe('MessagingGroupsView', () => {
 			await client.messaging.createAndShareGroup({
 				signer: adminKeypair,
 				uuid,
+				name: 'Test Group',
 			});
 
 			// Verify derived IDs match actual on-chain objects
@@ -74,6 +75,7 @@ describe('MessagingGroupsView', () => {
 			await client.messaging.createAndShareGroup({
 				signer: adminKeypair,
 				uuid,
+				name: 'Test Group',
 			});
 
 			const currentKey = await client.messaging.view.currentEncryptedKey({ uuid });
@@ -102,6 +104,7 @@ describe('MessagingGroupsView', () => {
 			await client.messaging.createAndShareGroup({
 				signer: adminKeypair,
 				uuid,
+				name: 'Test Group',
 			});
 
 			const encryptionHistoryId = client.messaging.derive.encryptionHistoryId({ uuid });

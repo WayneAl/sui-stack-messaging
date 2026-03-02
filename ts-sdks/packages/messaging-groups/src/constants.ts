@@ -28,10 +28,10 @@ export const MAINNET_MESSAGING_GROUPS_PACKAGE_CONFIG = {
 export const GROUP_LEAVER_DERIVATION_KEY = 'group_leaver';
 
 /**
- * The derivation key used by `suins_manager.move` to derive the `SuinsManager` singleton
- * from `MessagingNamespace`. Must match the Move constant `SUINS_MANAGER_DERIVATION_KEY`.
+ * The derivation key used by `group_manager.move` to derive the `GroupManager` singleton
+ * from `MessagingNamespace`. Must match the Move constant `GROUP_MANAGER_DERIVATION_KEY`.
  */
-export const SUINS_MANAGER_DERIVATION_KEY = 'suins_manager';
+export const GROUP_MANAGER_DERIVATION_KEY = 'group_manager';
 
 // === SuiNS Configuration ===
 
@@ -80,5 +80,7 @@ export function messagingPermissionTypes(packageId: string) {
 		MessagingEditor: `${packageId}::messaging::MessagingEditor`,
 		MessagingDeleter: `${packageId}::messaging::MessagingDeleter`,
 		EncryptionKeyRotator: `${packageId}::encryption_history::EncryptionKeyRotator`,
+		SuiNsAdmin: `${packageId}::messaging::SuiNsAdmin`,
+		MetadataAdmin: `${packageId}::messaging::MetadataAdmin`,
 	} as const;
 }
