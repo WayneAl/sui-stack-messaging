@@ -84,6 +84,8 @@ export interface SubscribeParams {
 	 * When omitted, subscription starts from the latest messages.
 	 */
 	afterOrder?: number;
+	/** Max messages to return per poll (default: 50, max: 100) */
+	limit?: number;
 	/** Signal to stop the subscription and free resources */
 	signal?: AbortSignal;
 }
