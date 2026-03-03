@@ -365,6 +365,82 @@ describe('HTTPRelayerTransport', () => {
 			]);
 		});
 
+		it('throws on 4xx client errors instead of retrying', async () => {
+			const transport = new HTTPRelayerTransport({
+				relayerUrl: MOCK_RELAYER_URL,
+				signer: Ed25519Keypair.generate(),
+				pollingIntervalMs: 10,
+			});
+
+			mockFetch.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({ error: 'Not a group member', code: 'NOT_GROUP_MEMBER' }),
+					{ status: 403 },
+				),
+			);
+
+			const received: string[] = [];
+			await expect(async () => {
+				for await (const message of transport.subscribe({
+					groupId: WIRE_MESSAGE.group_id,
+				})) {
+					received.push(message.messageId);
+				}
+			}).rejects.toThrow(RelayerTransportError);
+
+			expect(received).toEqual([]);
+		});
+
+		it('retries on 5xx server errors', async () => {
+			const transport = new HTTPRelayerTransport({
+				relayerUrl: MOCK_RELAYER_URL,
+				signer: Ed25519Keypair.generate(),
+				pollingIntervalMs: 10,
+			});
+
+			const controller = new AbortController();
+
+			// First poll: 500 server error (should retry)
+			mockFetch.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({ error: 'Internal server error' }),
+					{ status: 500 },
+				),
+			);
+
+			// Second poll: success with a message, then abort
+			mockFetch.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({
+						messages: [{ ...WIRE_MESSAGE, order: 1 }],
+						hasNext: false,
+					}),
+					{ status: 200 },
+				),
+			);
+
+			// Third poll: empty (triggers delay, abort during it)
+			mockFetch.mockResolvedValueOnce(
+				new Response(
+					JSON.stringify({ messages: [], hasNext: false }),
+					{ status: 200 },
+				),
+			);
+
+			const received: string[] = [];
+			for await (const message of transport.subscribe({
+				groupId: WIRE_MESSAGE.group_id,
+				signal: controller.signal,
+			})) {
+				received.push(message.messageId);
+				controller.abort();
+			}
+
+			expect(received).toEqual([WIRE_MESSAGE.message_id]);
+			// Should have retried after the 500
+			expect(mockFetch).toHaveBeenCalledTimes(2);
+		});
+
 		it('stops on disconnect', async () => {
 			const transport = new HTTPRelayerTransport({
 				relayerUrl: MOCK_RELAYER_URL,

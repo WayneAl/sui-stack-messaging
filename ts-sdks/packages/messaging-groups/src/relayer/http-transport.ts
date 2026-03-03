@@ -291,6 +291,7 @@ export class HTTPRelayerTransport implements RelayerTransport {
 				const result = await this.fetchMessages({
 					groupId: params.groupId,
 					afterOrder: lastOrder,
+					limit: params.limit,
 				});
 
 				for (const message of result.messages) {
@@ -304,6 +305,10 @@ export class HTTPRelayerTransport implements RelayerTransport {
 				}
 			} catch (error) {
 				if (this.#disconnected || params.signal?.aborted) return;
+				// Client errors (4xx) are not retryable — throw immediately
+				if (error instanceof RelayerTransportError && error.status >= 400 && error.status < 500) {
+					throw error;
+				}
 				await delay(this.#pollingIntervalMs, params.signal);
 			}
 		}
