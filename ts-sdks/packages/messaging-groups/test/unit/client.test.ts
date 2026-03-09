@@ -136,7 +136,7 @@ describe('MessagingGroupsClient', () => {
 			expect(client).toBeInstanceOf(MessagingGroupsClient);
 		});
 
-		it('should expose call, tx, view, bcs, derive, encryption', () => {
+		it('should expose call, tx, view, bcs, derive, encryption, transport', () => {
 			const client = new MessagingGroupsClient({
 				client: createExtendedClient() as any,
 				groupsName: 'groups',
@@ -152,6 +152,7 @@ describe('MessagingGroupsClient', () => {
 			expect(client.bcs).toBeDefined();
 			expect(client.derive).toBeDefined();
 			expect(client.encryption).toBeDefined();
+			expect(client.transport).toBeDefined();
 		});
 	});
 });

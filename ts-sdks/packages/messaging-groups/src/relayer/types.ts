@@ -3,7 +3,7 @@
 
 import type { Signer } from '@mysten/sui/cryptography';
 
-import type { Attachment, AttachmentsConfig } from '../attachments/types.js';
+import type { Attachment } from '../attachments/types.js';
 import type { HttpClientConfig } from '../http/types.js';
 import type { RelayerTransport } from './transport.js';
 
@@ -136,31 +136,22 @@ export interface RelayerTransportConfig {
 }
 
 /**
- * Configuration for the RelayerClient, passed via `messagingGroups()`.
+ * Configuration for the relayer transport, passed via `messagingGroups()`.
  *
  * Provide `relayerUrl` + `signer` for the default HTTP transport, or supply
  * a custom `transport` instance for non-HTTP transports (WebSocket, SSE, etc.).
  */
-export type RelayerClientConfig = RelayerClientConfigBase &
-	(RelayerClientHTTPConfig | RelayerClientCustomTransportConfig);
-
-interface RelayerClientConfigBase {
-	/**
-	 * Attachment support. When omitted, messages cannot include files,
-	 * and received attachments are not resolvable.
-	 */
-	attachments?: AttachmentsConfig;
-}
+export type RelayerConfig = RelayerHTTPConfig | RelayerCustomTransportConfig;
 
 /** Use the built-in HTTP polling transport (default). */
-interface RelayerClientHTTPConfig extends RelayerTransportConfig, HttpClientConfig {
+interface RelayerHTTPConfig extends RelayerTransportConfig, HttpClientConfig {
 	/** Polling interval in milliseconds for the subscribe method (default: 3000). */
 	pollingIntervalMs?: number;
 	transport?: never;
 }
 
 /** Use a custom pre-built transport. */
-interface RelayerClientCustomTransportConfig {
+interface RelayerCustomTransportConfig {
 	/** Pre-configured transport instance. */
 	transport: RelayerTransport;
 	relayerUrl?: never;

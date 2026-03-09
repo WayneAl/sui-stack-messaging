@@ -13,7 +13,7 @@ export type {
 	DeleteMessageParams,
 	SubscribeParams,
 	RelayerTransportConfig,
-	RelayerClientConfig,
+	RelayerConfig,
 } from './types.js';
 
 export { RelayerTransportError } from './types.js';
@@ -21,16 +21,3 @@ export { RelayerTransportError } from './types.js';
 export type { RelayerTransport } from './transport.js';
 
 export { HTTPRelayerTransport, type HTTPRelayerTransportConfig } from './http-transport.js';
-
-export { RelayerClient } from './client.js';
-export type {
-	DecryptedMessage,
-	EditAttachments,
-	SendMessageOptions,
-	GetMessageOptions,
-	GetMessagesOptions,
-	GetMessagesResult,
-	EditMessageOptions,
-	DeleteMessageOptions,
-	SubscribeOptions,
-} from './client.js';
