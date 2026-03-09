@@ -7,9 +7,11 @@ import type { Signer } from '@mysten/sui/cryptography';
 import type { ClientWithCoreApi } from '@mysten/sui/client';
 import type { TransactionArgument } from '@mysten/sui/transactions';
 
+import type { AttachmentsConfig } from './attachments/types.js';
 import type { SuinsConfig } from './constants.js';
 import type { CryptoPrimitives } from './encryption/crypto-primitives.js';
 import type { SealPolicy } from './encryption/seal-policy.js';
+import type { RelayerConfig } from './relayer/types.js';
 
 // === Package Configuration ===
 
@@ -126,6 +128,13 @@ export interface MessagingGroupsClientOptions<
 	suinsConfig?: SuinsConfig;
 	/** Encryption configuration (required — session key config must be set at creation). */
 	encryption: MessagingGroupsEncryptionOptions<TApproveContext>;
+	/** Relayer transport configuration. */
+	relayer: RelayerConfig;
+	/**
+	 * Attachment support. When omitted, messages cannot include files,
+	 * and received attachments are not resolvable.
+	 */
+	attachments?: AttachmentsConfig;
 }
 
 // === Call/Tx Options (no signer) ===

@@ -4,6 +4,8 @@
 import type { Signer } from '@mysten/sui/cryptography';
 
 import type { Attachment } from '../attachments/types.js';
+import type { HttpClientConfig } from '../http/types.js';
+import type { RelayerTransport } from './transport.js';
 
 export type SyncStatus =
 	| 'SYNC_PENDING'
@@ -131,4 +133,27 @@ export class RelayerTransportError extends Error {
 export interface RelayerTransportConfig {
 	relayerUrl: string;
 	signer: Signer;
+}
+
+/**
+ * Configuration for the relayer transport, passed via `messagingGroups()`.
+ *
+ * Provide `relayerUrl` + `signer` for the default HTTP transport, or supply
+ * a custom `transport` instance for non-HTTP transports (WebSocket, SSE, etc.).
+ */
+export type RelayerConfig = RelayerHTTPConfig | RelayerCustomTransportConfig;
+
+/** Use the built-in HTTP polling transport (default). */
+interface RelayerHTTPConfig extends RelayerTransportConfig, HttpClientConfig {
+	/** Polling interval in milliseconds for the subscribe method (default: 3000). */
+	pollingIntervalMs?: number;
+	transport?: never;
+}
+
+/** Use a custom pre-built transport. */
+interface RelayerCustomTransportConfig {
+	/** Pre-configured transport instance. */
+	transport: RelayerTransport;
+	relayerUrl?: never;
+	signer?: never;
 }

@@ -20,6 +20,7 @@ export * from './relayer/index.js';
 export * from './storage/index.js';
 export * from './http/index.js';
 export * from './attachments/index.js';
+export * from './messaging-types.js';
 export type {
 	ParsedMessagingNamespace,
 	ParsedMessaging,

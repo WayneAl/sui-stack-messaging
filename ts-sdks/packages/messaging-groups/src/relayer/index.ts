@@ -13,6 +13,7 @@ export type {
 	DeleteMessageParams,
 	SubscribeParams,
 	RelayerTransportConfig,
+	RelayerConfig,
 } from './types.js';
 
 export { RelayerTransportError } from './types.js';
