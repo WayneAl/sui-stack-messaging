@@ -87,7 +87,7 @@ const message: RelayerMessage = fromWalrusMessage(wire);
 
 ### Building a Recovery Transport
 
-To restore full conversation history from Walrus, implement `RecoveryTransport` (2 methods: `fetchMessages` + `disconnect`) that:
+To restore full conversation history from Walrus, implement `RecoveryTransport` (1 method: `recoverMessages`) that:
 
 1. Queries an indexer for which Walrus blobs contain a group's messages
 2. Downloads message content from the Walrus aggregator
@@ -125,9 +125,10 @@ See [`examples/recovery-transport/`](./examples/recovery-transport/) for a compl
 
 | Export | Description |
 |---|---|
-| `RecoveryTransport` | Read-only interface for recovery adapters |
+| `RecoveryTransport` | Read-only interface for recovery adapters (1 method: `recoverMessages`) |
 | `fromWalrusMessage()` | Convert Walrus wire format to `RelayerMessage` |
 | `WalrusMessageWire` | Type for the raw Walrus JSON shape |
+| `WalrusAttachmentWire` | Type for the raw Walrus attachment shape |
 
 ## License
 
