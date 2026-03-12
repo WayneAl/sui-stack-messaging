@@ -22,7 +22,7 @@ const recovery = new WalrusRecoveryTransport({
   aggregatorUrl: 'https://aggregator.walrus-testnet.walrus.space',
 });
 
-const { messages, hasNext } = await recovery.fetchMessages({
+const { messages, hasNext } = await recovery.recoverMessages({
   groupId: '0x...',
   limit: 50,
 });
@@ -36,9 +36,10 @@ The SDK provides everything you need to build a custom recovery transport with y
 
 | Export | Purpose |
 |---|---|
-| `RecoveryTransport` | Interface your transport must implement (2 methods) |
+| `RecoveryTransport` | Interface your transport must implement (1 method: `recoverMessages`) |
 | `fromWalrusMessage()` | Converts Walrus wire format → `RelayerMessage` |
 | `WalrusMessageWire` | Type for the raw Walrus JSON shape |
+| `WalrusAttachmentWire` | Type for the raw Walrus attachment shape |
 | `FetchMessagesParams`, `FetchMessagesResult`, `RelayerMessage` | Shared param/result types |
 | `HttpClientConfig` | Base config type (timeout, fetch override, onError) |
 | `DEFAULT_HTTP_TIMEOUT` | Standard timeout (30s) |
@@ -56,14 +57,12 @@ import {
 } from '@mysten/messaging-groups';
 
 class MyRecoveryTransport implements RecoveryTransport {
-  async fetchMessages(params: FetchMessagesParams): Promise<FetchMessagesResult> {
+  async recoverMessages(params: FetchMessagesParams): Promise<FetchMessagesResult> {
     // 1. Query YOUR indexer for message locations
     // 2. Download content from Walrus
     // 3. Convert using fromWalrusMessage()
     // 4. Return sorted by order
   }
-
-  disconnect() {}
 }
 ```
 
@@ -88,5 +87,4 @@ const message: RelayerMessage = fromWalrusMessage(wire);
 
 ## Limitations
 
-- **Read-only** — `RecoveryTransport` only supports `fetchMessages`
-- **No attachment content** — Walrus stores attachment patch IDs, not full Attachment objects
+- **Read-only** — `RecoveryTransport` only supports `recoverMessages`
