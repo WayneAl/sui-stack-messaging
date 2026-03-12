@@ -15,8 +15,7 @@ export type SyncStatus =
 	| 'DELETE_PENDING'
 	| 'DELETED';
 
-/**
- * A message as returned by the relayer. */
+/** A message returned by a {@link RelayerTransport} implementation. */
 export interface RelayerMessage {
 	messageId: string;
 	groupId: string;
@@ -30,11 +29,12 @@ export interface RelayerMessage {
 	attachments: Attachment[];
 	isEdited: boolean;
 	isDeleted: boolean;
-	syncStatus: SyncStatus;
-	quiltPatchId: string | null;
+	/** Only relevant when using a backend that syncs to Walrus. */
+	syncStatus?: SyncStatus;
+	/** Only present when the backend persists messages to Walrus. */
+	quiltPatchId?: string | null;
 }
 
-/** Parameters for sending a new encrypted message to a group. */
 export interface SendMessageParams {
 	groupId: string;
 	encryptedText: Uint8Array;
@@ -43,27 +43,19 @@ export interface SendMessageParams {
 	attachments?: Attachment[];
 }
 
-/** Parameters for fetching a paginated list of messages for a group.
- * Only group members can fetch messages. The relayer authenticates the requester.
- * Supports cursor-based pagination via afterOrder and beforeOrder.
- */
+/** Supports cursor-based pagination via afterOrder/beforeOrder. */
 export interface FetchMessagesParams {
 	groupId: string;
-	/** Cursor: fetch messages with order > afterOrder (exclusive lower bound) */
 	afterOrder?: number;
-	/** Cursor: fetch messages with order < beforeOrder (exclusive upper bound) */
 	beforeOrder?: number;
-	/** Max messages to return (default: 50, max: 100) */
 	limit?: number;
 }
 
-/** Parameters for fetching a single message by ID. */
 export interface FetchMessageParams {
 	messageId: string;
 	groupId: string;
 }
 
-/** Parameters for updating a message with new encrypted content. */
 export interface UpdateMessageParams {
 	messageId: string;
 	groupId: string;
@@ -73,52 +65,34 @@ export interface UpdateMessageParams {
 	attachments?: Attachment[];
 }
 
-/** Parameters for soft-deleting a message. */
 export interface DeleteMessageParams {
 	messageId: string;
 	groupId: string;
 }
 
-/** Parameters for subscribing to real-time messages in a group. */
 export interface SubscribeParams {
 	groupId: string;
-	/**
-	 * Resume from this order value (exclusive).
-	 * Only messages with order > afterOrder will be delivered.
-	 * When omitted, subscription starts from the latest messages.
-	 */
+	/** Resume from this order (exclusive). Only messages with order > afterOrder are delivered. */
 	afterOrder?: number;
-	/** Max messages to return per poll (default: 50, max: 100) */
 	limit?: number;
-	/** Signal to stop the subscription and free resources */
 	signal?: AbortSignal;
 }
 
-/** Response from sendMessage. It contains the relayer-assigned message ID. */
 export interface SendMessageResult {
 	messageId: string;
 }
 
-/** Response from fetchMessages paginated list with cursor info. */
 export interface FetchMessagesResult {
 	messages: RelayerMessage[];
 	hasNext: boolean;
 }
 
 /**
- * Structured error from the relayer.
- *
- * Maps to the relayer's JSON error responses:
- * - `{ "error": "..." }` for API errors (400, 404, 409, 500)
- * - `{ "error": "...", "code": "..." }` for auth errors (401, 403)
+ * Structured error from a transport implementation.
+ * Uses HTTP-style status codes for error discrimination (e.g. 401, 404, 405).
  */
 export class RelayerTransportError extends Error {
-	/** HTTP status code (e.g., 400, 401, 403, 404, 409, 500) */
 	readonly status: number;
-	/**
-	 * Machine-readable error code from the relayer (e.g., "NOT_GROUP_MEMBER",
-	 * "SIGNATURE_VERIFICATION_FAILED"). Only present for auth errors.
-	 */
 	readonly code?: string;
 
 	constructor(message: string, status: number, code?: string) {
@@ -129,30 +103,23 @@ export class RelayerTransportError extends Error {
 	}
 }
 
-/** Base configuration shared by all transport implementations. */
 export interface RelayerTransportConfig {
 	relayerUrl: string;
 	signer: Signer;
 }
 
 /**
- * Configuration for the relayer transport, passed via `messagingGroups()`.
- *
- * Provide `relayerUrl` + `signer` for the default HTTP transport, or supply
- * a custom `transport` instance for non-HTTP transports (WebSocket, SSE, etc.).
+ * Provide `relayerUrl` + `signer` for the built-in HTTP transport,
+ * or supply a custom `transport` instance for any other backend.
  */
 export type RelayerConfig = RelayerHTTPConfig | RelayerCustomTransportConfig;
 
-/** Use the built-in HTTP polling transport (default). */
 interface RelayerHTTPConfig extends RelayerTransportConfig, HttpClientConfig {
-	/** Polling interval in milliseconds for the subscribe method (default: 3000). */
 	pollingIntervalMs?: number;
 	transport?: never;
 }
 
-/** Use a custom pre-built transport. */
 interface RelayerCustomTransportConfig {
-	/** Pre-configured transport instance. */
 	transport: RelayerTransport;
 	relayerUrl?: never;
 	signer?: never;
