@@ -1,6 +1,14 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+/** Raw attachment shape as serialized by Rust's serde_json (Vec<u8> → number[]). */
+export interface WalrusAttachmentWire {
+	storage_id: string;
+	nonce: number[];
+	encrypted_metadata: number[];
+	metadata_nonce: number[];
+}
+
 /**
  * Raw message shape as stored on Walrus by the reference relayer.
  *
@@ -23,5 +31,5 @@ export interface WalrusMessageWire {
 	updated_at: string;
 	sync_status: string;
 	quilt_patch_id: string | null;
-	attachments: string[];
+	attachments: WalrusAttachmentWire[];
 }

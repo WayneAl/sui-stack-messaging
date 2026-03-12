@@ -1,13 +1,29 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { Attachment } from '../attachments/types.js';
 import type { RelayerMessage, SyncStatus } from '../relayer/types.js';
-import type { WalrusMessageWire } from './types.js';
+import type { WalrusAttachmentWire, WalrusMessageWire } from './types.js';
+
+/** Convert a number[] (Rust serde_json Vec<u8>) to a hex string. */
+function bytesToHex(bytes: number[]): string {
+	return bytes.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Convert a raw Walrus attachment to the SDK's {@link Attachment} format. */
+function mapAttachment(wire: WalrusAttachmentWire): Attachment {
+	return {
+		storageId: wire.storage_id,
+		nonce: bytesToHex(wire.nonce),
+		encryptedMetadata: bytesToHex(wire.encrypted_metadata),
+		metadataNonce: bytesToHex(wire.metadata_nonce),
+	};
+}
 
 /**
  * Convert a raw Walrus message to the SDK's {@link RelayerMessage} format.
  *
- * Handles: number[] → Uint8Array, ISO 8601 → unix seconds,
+ * Handles: number[] → Uint8Array/hex, ISO 8601 → unix seconds,
  * Rust field names → SDK names, derives isEdited/isDeleted.
  */
 export function fromWalrusMessage(wire: WalrusMessageWire): RelayerMessage {
@@ -26,7 +42,7 @@ export function fromWalrusMessage(wire: WalrusMessageWire): RelayerMessage {
 		senderAddress: wire.sender_wallet_addr,
 		createdAt,
 		updatedAt,
-		attachments: [],
+		attachments: wire.attachments.map(mapAttachment),
 		isEdited,
 		isDeleted,
 		syncStatus: wire.sync_status as SyncStatus,
