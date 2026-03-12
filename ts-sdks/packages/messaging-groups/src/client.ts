@@ -16,11 +16,16 @@ import {
 } from './constants.js';
 import { AttachmentsManager } from './attachments/attachments-manager.js';
 import type { Attachment, AttachmentFile, AttachmentHandle } from './attachments/types.js';
-import { EnvelopeEncryption } from './encryption/envelope-encryption.js';
+import { EnvelopeEncryption, buildMessageAad } from './encryption/envelope-encryption.js';
 import type { EncryptOptions, DecryptOptions } from './encryption/envelope-encryption.js';
 import { HTTPRelayerTransport } from './relayer/http-transport.js';
 import type { RelayerTransport } from './relayer/transport.js';
 import type { RelayerConfig, RelayerMessage } from './relayer/types.js';
+import {
+	signMessageContent,
+	verifyMessageSender,
+	type VerifyMessageSenderParams,
+} from './verification.js';
 import type {
 	DecryptedMessage,
 	DeleteMessageOptions,
@@ -41,6 +46,7 @@ import type {
 	MessagingGroupsEncryptionOptions,
 	MessagingGroupsPackageConfig,
 	RemoveGroupDataOptions,
+	RemoveMemberAndRotateKeyOptions,
 	RotateEncryptionKeyOptions,
 	SetGroupNameOptions,
 	SetSuinsReverseLookupOptions,
@@ -64,11 +70,11 @@ import { MessagingGroupsView } from './view.js';
  * // Use a single $extend call with all extensions
  * const client = new SuiClient({ url: 'https://...' }).$extend(
  *   permissionedGroups({ witnessType: `${pkg}::messaging::Messaging`, packageConfig }),
- *   messagingGroups({ packageConfig, encryption: { sessionKey }, relayer: { relayerUrl, signer } }),
+ *   messagingGroups({ packageConfig, encryption: { sessionKey }, relayer: { relayerUrl } }),
  * );
  *
  * // Send a message
- * await client.messaging.sendMessage({ groupRef: { uuid: 'my-group' }, text: 'Hello!' });
+ * await client.messaging.sendMessage({ signer: keypair, groupRef: { uuid: 'my-group' }, text: 'Hello!' });
  * ```
  */
 export function messagingGroups<
@@ -129,12 +135,14 @@ export function messagingGroups<
  * ```ts
  * // Send a message
  * const { messageId } = await client.messaging.sendMessage({
+ *   signer: keypair,
  *   groupRef: { uuid: 'my-group' },
  *   text: 'Hello!',
  * });
  *
  * // Subscribe to new messages
  * for await (const msg of client.messaging.subscribe({
+ *   signer: keypair,
  *   groupRef: { uuid: 'my-group' },
  *   signal: controller.signal,
  * })) {
@@ -220,6 +228,7 @@ export class MessagingGroupsClient<TApproveContext = void> {
 			permissionedGroupTypeName: groupsExt.bcs.PermissionedGroup.name,
 			encryptionHistoryTypeName: this.bcs.EncryptionHistory.name,
 			suinsConfig,
+			groupsCall: groupsExt.call,
 		});
 		this.tx = new MessagingGroupsTransactions({
 			call: this.call,
@@ -233,7 +242,6 @@ export class MessagingGroupsClient<TApproveContext = void> {
 			? options.relayer.transport
 			: new HTTPRelayerTransport({
 					relayerUrl: options.relayer.relayerUrl,
-					signer: options.relayer.signer,
 					pollingIntervalMs: options.relayer.pollingIntervalMs,
 					fetch: options.relayer.fetch,
 					timeout: options.relayer.timeout,
@@ -286,13 +294,19 @@ export class MessagingGroupsClient<TApproveContext = void> {
 
 		const { groupId, encryptionHistoryId } = this.derive.resolveGroupRef(options.groupRef);
 		const approveContext = this.#approveContextSpread(options);
+		const senderAddress = options.signer.toSuiAddress();
 
 		// 1. Encrypt text (empty string for attachment-only messages).
 		const textBytes = this.#textEncoder.encode(options.text ?? '');
+		const keyVersion = await this.view.getCurrentKeyVersion({ encryptionHistoryId });
+		const aad = buildMessageAad({ groupId, keyVersion, senderAddress });
+
 		const envelope = await this.encryption.encrypt({
 			groupId,
 			encryptionHistoryId,
 			data: textBytes,
+			keyVersion,
+			aad,
 			...approveContext,
 		} as EncryptOptions<TApproveContext>);
 
@@ -303,13 +317,23 @@ export class MessagingGroupsClient<TApproveContext = void> {
 			approveContext,
 		);
 
-		// 3. Send via transport.
+		// 3. Sign the ciphertext for sender verification.
+		const messageSignature = await signMessageContent(options.signer, {
+			groupId,
+			encryptedText: envelope.ciphertext,
+			nonce: envelope.nonce,
+			keyVersion: envelope.keyVersion,
+		});
+
+		// 4. Send via transport.
 		const result = await this.transport.sendMessage({
+			signer: options.signer,
 			groupId,
 			encryptedText: envelope.ciphertext,
 			nonce: envelope.nonce,
 			keyVersion: envelope.keyVersion,
 			attachments: attachmentRefs.length > 0 ? attachmentRefs : undefined,
+			messageSignature,
 		});
 
 		return { messageId: result.messageId };
@@ -323,6 +347,7 @@ export class MessagingGroupsClient<TApproveContext = void> {
 		const approveContext = this.#approveContextSpread(options);
 
 		const raw = await this.transport.fetchMessage({
+			signer: options.signer,
 			messageId: options.messageId,
 			groupId,
 		});
@@ -338,6 +363,7 @@ export class MessagingGroupsClient<TApproveContext = void> {
 		const approveContext = this.#approveContextSpread(options);
 
 		const result = await this.transport.fetchMessages({
+			signer: options.signer,
 			groupId,
 			afterOrder: options.afterOrder,
 			beforeOrder: options.beforeOrder,
@@ -372,13 +398,19 @@ export class MessagingGroupsClient<TApproveContext = void> {
 	async editMessage(options: EditMessageOptions<TApproveContext>): Promise<void> {
 		const { groupId, encryptionHistoryId } = this.derive.resolveGroupRef(options.groupRef);
 		const approveContext = this.#approveContextSpread(options);
+		const senderAddress = options.signer.toSuiAddress();
 
 		// 1. Encrypt new text.
 		const textBytes = this.#textEncoder.encode(options.text);
+		const keyVersion = await this.view.getCurrentKeyVersion({ encryptionHistoryId });
+		const aad = buildMessageAad({ groupId, keyVersion, senderAddress });
+
 		const envelope = await this.encryption.encrypt({
 			groupId,
 			encryptionHistoryId,
 			data: textBytes,
+			keyVersion,
+			aad,
 			...approveContext,
 		} as EncryptOptions<TApproveContext>);
 
@@ -407,14 +439,24 @@ export class MessagingGroupsClient<TApproveContext = void> {
 			}
 		}
 
-		// 3. Update via transport.
+		// 3. Sign the ciphertext for sender verification.
+		const messageSignature = await signMessageContent(options.signer, {
+			groupId,
+			encryptedText: envelope.ciphertext,
+			nonce: envelope.nonce,
+			keyVersion: envelope.keyVersion,
+		});
+
+		// 4. Update via transport.
 		await this.transport.updateMessage({
+			signer: options.signer,
 			messageId: options.messageId,
 			groupId,
 			encryptedText: envelope.ciphertext,
 			nonce: envelope.nonce,
 			keyVersion: envelope.keyVersion,
 			attachments: finalAttachments,
+			messageSignature,
 		});
 
 		// 4. Best-effort storage cleanup for removed attachments.
@@ -431,6 +473,7 @@ export class MessagingGroupsClient<TApproveContext = void> {
 		const { groupId } = this.derive.resolveGroupRef(options.groupRef);
 
 		await this.transport.deleteMessage({
+			signer: options.signer,
 			messageId: options.messageId,
 			groupId,
 		});
@@ -447,6 +490,7 @@ export class MessagingGroupsClient<TApproveContext = void> {
 	 * ```ts
 	 * const controller = new AbortController();
 	 * for await (const msg of client.messaging.subscribe({
+	 *   signer: keypair,
 	 *   groupRef: { uuid: '...' },
 	 *   signal: controller.signal,
 	 * })) {
@@ -461,6 +505,7 @@ export class MessagingGroupsClient<TApproveContext = void> {
 		const approveContext = this.#approveContextSpread(options);
 
 		for await (const raw of this.transport.subscribe({
+			signer: options.signer,
 			groupId,
 			afterOrder: options.afterOrder,
 			signal: options.signal,
@@ -512,10 +557,17 @@ export class MessagingGroupsClient<TApproveContext = void> {
 				isDeleted: true,
 				syncStatus: raw.syncStatus,
 				attachments: [],
+				senderVerified: false,
 			};
 		}
 
 		// Decrypt text.
+		const aad = buildMessageAad({
+			groupId: groupIds.groupId,
+			keyVersion: raw.keyVersion,
+			senderAddress: raw.senderAddress,
+		});
+
 		const plaintext = await this.encryption.decrypt({
 			...groupIds,
 			...approveContext,
@@ -523,10 +575,25 @@ export class MessagingGroupsClient<TApproveContext = void> {
 				ciphertext: raw.encryptedText,
 				nonce: raw.nonce,
 				keyVersion: raw.keyVersion,
+				aad,
 			},
 		} as DecryptOptions<TApproveContext>);
 
 		const text = this.#textDecoder.decode(plaintext);
+
+		// Verify sender signature (fail-safe: false if missing or invalid).
+		const senderVerified =
+			raw.signature && raw.publicKey
+				? await verifyMessageSender({
+						groupId: raw.groupId,
+						encryptedText: raw.encryptedText,
+						nonce: raw.nonce,
+						keyVersion: raw.keyVersion,
+						senderAddress: raw.senderAddress,
+						signature: raw.signature,
+						publicKey: raw.publicKey,
+					})
+				: false;
 
 		// Resolve attachments.
 		const attachments = await this.#resolveAttachments(
@@ -548,6 +615,7 @@ export class MessagingGroupsClient<TApproveContext = void> {
 			isDeleted: false,
 			syncStatus: raw.syncStatus,
 			attachments,
+			senderVerified,
 		};
 	}
 
@@ -604,6 +672,20 @@ export class MessagingGroupsClient<TApproveContext = void> {
 		}
 	}
 
+	// === Verification ===
+
+	/**
+	 * Verify that a message was signed by the claimed sender.
+	 *
+	 * Reconstructs the canonical message from the ciphertext fields,
+	 * rebuilds the serialized signature, and verifies using the public key.
+	 *
+	 * @returns `true` if the signature is valid and the derived address matches `senderAddress`.
+	 */
+	verifyMessageSender(params: VerifyMessageSenderParams): Promise<boolean> {
+		return verifyMessageSender(params);
+	}
+
 	// === Top-Level Imperative Methods ===
 
 	/**
@@ -635,6 +717,16 @@ export class MessagingGroupsClient<TApproveContext = void> {
 		const { signer, ...callOptions } = options;
 		const transaction = this.tx.rotateEncryptionKey(callOptions);
 		return this.#executeTransaction(transaction, signer, 'rotate encryption key');
+	}
+
+	/**
+	 * Atomically removes a member and rotates the encryption key.
+	 * Ensures the removed member cannot decrypt new messages.
+	 */
+	async removeMemberAndRotateKey(options: RemoveMemberAndRotateKeyOptions) {
+		const { signer, ...callOptions } = options;
+		const transaction = this.tx.removeMemberAndRotateKey(callOptions);
+		return this.#executeTransaction(transaction, signer, 'remove member and rotate key');
 	}
 
 	/**

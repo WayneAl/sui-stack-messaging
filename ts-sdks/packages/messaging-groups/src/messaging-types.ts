@@ -1,6 +1,8 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { Signer } from '@mysten/sui/cryptography';
+
 import type { Attachment, AttachmentFile, AttachmentHandle } from './attachments/types.js';
 import type { SyncStatus } from './relayer/types.js';
 import type { GroupRef } from './types.js';
@@ -33,11 +35,14 @@ export interface DecryptedMessage {
 	syncStatus?: SyncStatus;
 	/** Resolved attachment handles with lazy data download. Empty when no attachments or not configured. */
 	attachments: AttachmentHandle[];
+	/** Whether the per-message sender signature was verified successfully. */
+	senderVerified: boolean;
 }
 
 // ── Options types ────────────────────────────────────────────────
 
 interface SendMessageOptionsBase {
+	signer: Signer;
 	groupRef: GroupRef;
 	/** Message text. At least one of `text` or `files` must be provided. */
 	text?: string;
@@ -52,6 +57,7 @@ export type SendMessageOptions<TApproveContext = void> = WithApproveContext<
 >;
 
 interface GetMessageOptionsBase {
+	signer: Signer;
 	groupRef: GroupRef;
 	messageId: string;
 }
@@ -63,6 +69,7 @@ export type GetMessageOptions<TApproveContext = void> = WithApproveContext<
 >;
 
 interface GetMessagesOptionsBase {
+	signer: Signer;
 	groupRef: GroupRef;
 	afterOrder?: number;
 	beforeOrder?: number;
@@ -100,6 +107,7 @@ export interface EditAttachments {
 }
 
 interface EditMessageOptionsBase {
+	signer: Signer;
 	groupRef: GroupRef;
 	messageId: string;
 	/** New message text. */
@@ -116,11 +124,13 @@ export type EditMessageOptions<TApproveContext = void> = WithApproveContext<
 
 /** Options for {@link MessagingGroupsClient.deleteMessage}. No encryption involved. */
 export interface DeleteMessageOptions {
+	signer: Signer;
 	groupRef: GroupRef;
 	messageId: string;
 }
 
 interface SubscribeOptionsBase {
+	signer: Signer;
 	groupRef: GroupRef;
 	afterOrder?: number;
 	signal?: AbortSignal;

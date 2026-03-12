@@ -33,18 +33,26 @@ export interface RelayerMessage {
 	syncStatus?: SyncStatus;
 	/** Only present when the backend persists messages to Walrus. */
 	quiltPatchId?: string | null;
+	/** Hex-encoded per-message signature (64 bytes). */
+	signature: string;
+	/** Hex-encoded public key with scheme flag prefix. */
+	publicKey: string;
 }
 
 export interface SendMessageParams {
+	signer: Signer;
 	groupId: string;
 	encryptedText: Uint8Array;
 	nonce: Uint8Array;
 	keyVersion: bigint;
 	attachments?: Attachment[];
+	/** Hex-encoded per-message signature for sender verification. */
+	messageSignature?: string;
 }
 
 /** Supports cursor-based pagination via afterOrder/beforeOrder. */
 export interface FetchMessagesParams {
+	signer: Signer;
 	groupId: string;
 	afterOrder?: number;
 	beforeOrder?: number;
@@ -52,25 +60,31 @@ export interface FetchMessagesParams {
 }
 
 export interface FetchMessageParams {
+	signer: Signer;
 	messageId: string;
 	groupId: string;
 }
 
 export interface UpdateMessageParams {
+	signer: Signer;
 	messageId: string;
 	groupId: string;
 	encryptedText: Uint8Array;
 	nonce: Uint8Array;
 	keyVersion: bigint;
 	attachments?: Attachment[];
+	/** Hex-encoded per-message signature for sender verification. */
+	messageSignature?: string;
 }
 
 export interface DeleteMessageParams {
+	signer: Signer;
 	messageId: string;
 	groupId: string;
 }
 
 export interface SubscribeParams {
+	signer: Signer;
 	groupId: string;
 	/** Resume from this order (exclusive). Only messages with order > afterOrder are delivered. */
 	afterOrder?: number;
@@ -103,18 +117,14 @@ export class RelayerTransportError extends Error {
 	}
 }
 
-export interface RelayerTransportConfig {
-	relayerUrl: string;
-	signer: Signer;
-}
-
 /**
- * Provide `relayerUrl` + `signer` for the built-in HTTP transport,
+ * Provide `relayerUrl` for the built-in HTTP transport,
  * or supply a custom `transport` instance for any other backend.
  */
 export type RelayerConfig = RelayerHTTPConfig | RelayerCustomTransportConfig;
 
-interface RelayerHTTPConfig extends RelayerTransportConfig, HttpClientConfig {
+export interface RelayerHTTPConfig extends HttpClientConfig {
+	relayerUrl: string;
 	pollingIntervalMs?: number;
 	transport?: never;
 }
@@ -122,5 +132,4 @@ interface RelayerHTTPConfig extends RelayerTransportConfig, HttpClientConfig {
 interface RelayerCustomTransportConfig {
 	transport: RelayerTransport;
 	relayerUrl?: never;
-	signer?: never;
 }

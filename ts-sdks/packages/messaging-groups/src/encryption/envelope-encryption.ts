@@ -3,9 +3,10 @@
 
 import type { SealClient, SessionKey } from '@mysten/seal';
 import { EncryptedObject } from '@mysten/seal';
+import { bcs } from '@mysten/sui/bcs';
 import type { ClientCache, ClientWithCoreApi } from '@mysten/sui/client';
 import { Transaction } from '@mysten/sui/transactions';
-import { fromHex } from '@mysten/sui/utils';
+import { fromHex, isValidSuiAddress } from '@mysten/sui/utils';
 
 import type { MessagingGroupsDerive } from '../derive.js';
 import type { GroupRef, MessagingGroupsEncryptionOptions } from '../types.js';
@@ -15,6 +16,39 @@ import { getDefaultCryptoPrimitives } from './crypto-primitives.js';
 import { DEKManager, NONCE_LENGTH, type GeneratedDEK } from './dek-manager.js';
 import { DefaultSealPolicy, type SealPolicy } from './seal-policy.js';
 import { SessionKeyManager } from './session-key-manager.js';
+
+// === AAD (Additional Authenticated Data) ===
+
+/** BCS layout for message AAD: binds ciphertext to its group, key version, and sender. */
+const MessageAAD = bcs.struct('MessageAAD', {
+	groupId: bcs.Address,
+	keyVersion: bcs.u64(),
+	senderAddress: bcs.Address,
+});
+
+/**
+ * Build the AAD bytes for AES-GCM message encryption.
+ *
+ * The AAD is never stored — both sender and receiver reconstruct it from
+ * context they already know. If any field mismatches, AES-GCM decryption fails.
+ *
+ * Layout: `[groupId (32 bytes)][keyVersion (8 bytes LE u64)][senderAddress (32 bytes)]`
+ */
+export function buildMessageAad(params: {
+	groupId: string;
+	keyVersion: bigint;
+	senderAddress: string;
+}): Uint8Array {
+	if (!isValidSuiAddress(params.groupId)) {
+		throw new Error(`Invalid groupId: expected a valid Sui address, got "${params.groupId}"`);
+	}
+	if (!isValidSuiAddress(params.senderAddress)) {
+		throw new Error(
+			`Invalid senderAddress: expected a valid Sui address, got "${params.senderAddress}"`,
+		);
+	}
+	return MessageAAD.serialize(params).toBytes();
+}
 
 /** The result of encrypting data with envelope encryption. */
 export interface EncryptedEnvelope {

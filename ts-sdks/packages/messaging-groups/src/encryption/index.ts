@@ -25,4 +25,4 @@ export { DEKManager } from './dek-manager.js';
 export { DefaultSealPolicy } from './seal-policy.js';
 
 // Envelope Encryption
-export { EnvelopeEncryption } from './envelope-encryption.js';
+export { EnvelopeEncryption, buildMessageAad } from './envelope-encryption.js';

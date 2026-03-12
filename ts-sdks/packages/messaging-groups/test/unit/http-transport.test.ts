@@ -32,10 +32,12 @@ const WIRE_MESSAGE = {
 // Shared mock fetch — injected via config, not globalThis
 const mockFetch = vi.fn<typeof fetch>();
 
-function createTransport(keypair?: Ed25519Keypair) {
+// Default signer used when the test doesn't need a specific keypair.
+const defaultKeypair = Ed25519Keypair.generate();
+
+function createTransport() {
 	return new HTTPRelayerTransport({
 		relayerUrl: MOCK_RELAYER_URL,
-		signer: keypair ?? Ed25519Keypair.generate(),
 		fetch: mockFetch,
 	});
 }
@@ -54,7 +56,7 @@ describe('HTTPRelayerTransport', () => {
 	describe('sendMessage', () => {
 		it('sends POST /messages with correct body and auth headers', async () => {
 			const keypair = Ed25519Keypair.generate();
-			const transport = createTransport(keypair);
+			const transport = createTransport();
 
 			mockFetch.mockResolvedValueOnce(
 				new Response(JSON.stringify({ message_id: 'test-uuid' }), {
@@ -64,6 +66,7 @@ describe('HTTPRelayerTransport', () => {
 			);
 
 			const result = await transport.sendMessage({
+				signer: keypair,
 				groupId: '0x' + 'ab'.repeat(32),
 				encryptedText: new Uint8Array([1, 2, 3]),
 				nonce: new Uint8Array(12),
@@ -104,6 +107,7 @@ describe('HTTPRelayerTransport', () => {
 			];
 
 			await transport.sendMessage({
+				signer: defaultKeypair,
 				groupId: '0x' + 'ab'.repeat(32),
 				encryptedText: new Uint8Array([1]),
 				nonce: new Uint8Array(12),
@@ -134,7 +138,7 @@ describe('HTTPRelayerTransport', () => {
 	describe('fetchMessages', () => {
 		it('sends GET /messages with query params and header auth', async () => {
 			const keypair = Ed25519Keypair.generate();
-			const transport = createTransport(keypair);
+			const transport = createTransport();
 
 			mockFetch.mockResolvedValueOnce(
 				new Response(JSON.stringify({ messages: [WIRE_MESSAGE], hasNext: false }), { status: 200 }),
@@ -142,6 +146,7 @@ describe('HTTPRelayerTransport', () => {
 
 			const groupId = '0x' + 'ab'.repeat(32);
 			const result = await transport.fetchMessages({
+				signer: keypair,
 				groupId,
 				afterOrder: 5,
 				limit: 10,
@@ -181,6 +186,7 @@ describe('HTTPRelayerTransport', () => {
 			mockFetch.mockResolvedValueOnce(new Response(JSON.stringify(WIRE_MESSAGE), { status: 200 }));
 
 			const msg = await transport.fetchMessage({
+				signer: defaultKeypair,
 				messageId: WIRE_MESSAGE.message_id,
 				groupId: WIRE_MESSAGE.group_id,
 			});
@@ -203,6 +209,7 @@ describe('HTTPRelayerTransport', () => {
 			mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 200 }));
 
 			await transport.updateMessage({
+				signer: defaultKeypair,
 				messageId: 'test-uuid',
 				groupId: '0x' + 'ab'.repeat(32),
 				encryptedText: new Uint8Array([4, 5, 6]),
@@ -230,6 +237,7 @@ describe('HTTPRelayerTransport', () => {
 			mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 200 }));
 
 			await transport.deleteMessage({
+				signer: defaultKeypair,
 				messageId: 'test-uuid',
 				groupId: '0x' + 'ab'.repeat(32),
 			});
@@ -256,6 +264,7 @@ describe('HTTPRelayerTransport', () => {
 
 			await expect(
 				transport.sendMessage({
+					signer: defaultKeypair,
 					groupId: '0x' + 'ab'.repeat(32),
 					encryptedText: new Uint8Array([1]),
 					nonce: new Uint8Array(12),
@@ -268,6 +277,7 @@ describe('HTTPRelayerTransport', () => {
 					new Response(JSON.stringify({ error: 'Invalid hex in nonce' }), { status: 400 }),
 				);
 				await transport.sendMessage({
+					signer: defaultKeypair,
 					groupId: '0x' + 'ab'.repeat(32),
 					encryptedText: new Uint8Array([1]),
 					nonce: new Uint8Array(12),
@@ -292,7 +302,10 @@ describe('HTTPRelayerTransport', () => {
 			);
 
 			try {
-				await transport.fetchMessages({ groupId: '0x' + 'ab'.repeat(32) });
+				await transport.fetchMessages({
+					signer: defaultKeypair,
+					groupId: '0x' + 'ab'.repeat(32),
+				});
 			} catch (e) {
 				expect(e).toBeInstanceOf(RelayerTransportError);
 				const err = e as RelayerTransportError;
@@ -305,9 +318,9 @@ describe('HTTPRelayerTransport', () => {
 			const transport = createTransport();
 			transport.disconnect();
 
-			await expect(transport.fetchMessages({ groupId: '0x' + 'ab'.repeat(32) })).rejects.toThrow(
-				'Transport is disconnected',
-			);
+			await expect(
+				transport.fetchMessages({ signer: defaultKeypair, groupId: '0x' + 'ab'.repeat(32) }),
+			).rejects.toThrow('Transport is disconnected');
 		});
 	});
 
@@ -317,7 +330,6 @@ describe('HTTPRelayerTransport', () => {
 		it('yields messages from polling and stops on abort', async () => {
 			const transport = new HTTPRelayerTransport({
 				relayerUrl: MOCK_RELAYER_URL,
-				signer: Ed25519Keypair.generate(),
 				pollingIntervalMs: 10,
 				fetch: mockFetch,
 			});
@@ -356,6 +368,7 @@ describe('HTTPRelayerTransport', () => {
 
 			const received: string[] = [];
 			for await (const message of transport.subscribe({
+				signer: defaultKeypair,
 				groupId: WIRE_MESSAGE.group_id,
 				signal: controller.signal,
 			})) {
@@ -371,7 +384,6 @@ describe('HTTPRelayerTransport', () => {
 		it('throws on 4xx client errors instead of retrying', async () => {
 			const transport = new HTTPRelayerTransport({
 				relayerUrl: MOCK_RELAYER_URL,
-				signer: Ed25519Keypair.generate(),
 				pollingIntervalMs: 10,
 				fetch: mockFetch,
 			});
@@ -385,6 +397,7 @@ describe('HTTPRelayerTransport', () => {
 			const received: string[] = [];
 			await expect(async () => {
 				for await (const message of transport.subscribe({
+					signer: defaultKeypair,
 					groupId: WIRE_MESSAGE.group_id,
 				})) {
 					received.push(message.messageId);
@@ -397,7 +410,6 @@ describe('HTTPRelayerTransport', () => {
 		it('retries on 5xx server errors', async () => {
 			const transport = new HTTPRelayerTransport({
 				relayerUrl: MOCK_RELAYER_URL,
-				signer: Ed25519Keypair.generate(),
 				pollingIntervalMs: 10,
 				fetch: mockFetch,
 			});
@@ -427,6 +439,7 @@ describe('HTTPRelayerTransport', () => {
 
 			const received: string[] = [];
 			for await (const message of transport.subscribe({
+				signer: defaultKeypair,
 				groupId: WIRE_MESSAGE.group_id,
 				signal: controller.signal,
 			})) {
@@ -442,7 +455,6 @@ describe('HTTPRelayerTransport', () => {
 		it('stops on disconnect', async () => {
 			const transport = new HTTPRelayerTransport({
 				relayerUrl: MOCK_RELAYER_URL,
-				signer: Ed25519Keypair.generate(),
 				pollingIntervalMs: 10,
 				fetch: mockFetch,
 			});
@@ -455,6 +467,7 @@ describe('HTTPRelayerTransport', () => {
 
 			const received: string[] = [];
 			for await (const message of transport.subscribe({
+				signer: defaultKeypair,
 				groupId: WIRE_MESSAGE.group_id,
 			})) {
 				received.push(message.messageId);
@@ -469,13 +482,14 @@ describe('HTTPRelayerTransport', () => {
 	describe('signing', () => {
 		it('produces valid X-Public-Key header matching signer', async () => {
 			const keypair = Ed25519Keypair.generate();
-			const transport = createTransport(keypair);
+			const transport = createTransport();
 
 			mockFetch.mockResolvedValueOnce(
 				new Response(JSON.stringify({ message_id: 'test' }), { status: 201 }),
 			);
 
 			await transport.sendMessage({
+				signer: keypair,
 				groupId: '0x' + 'ab'.repeat(32),
 				encryptedText: new Uint8Array([1]),
 				nonce: new Uint8Array(12),
@@ -498,7 +512,6 @@ describe('HTTPRelayerTransport', () => {
 		it('strips trailing slashes from relayer URL', async () => {
 			const transport = new HTTPRelayerTransport({
 				relayerUrl: 'https://relayer.example.com///',
-				signer: Ed25519Keypair.generate(),
 				fetch: mockFetch,
 			});
 
@@ -507,6 +520,7 @@ describe('HTTPRelayerTransport', () => {
 			);
 
 			await transport.sendMessage({
+				signer: defaultKeypair,
 				groupId: '0x' + 'ab'.repeat(32),
 				encryptedText: new Uint8Array([1]),
 				nonce: new Uint8Array(12),

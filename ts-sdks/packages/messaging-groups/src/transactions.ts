@@ -10,6 +10,7 @@ import type {
 	InsertGroupDataCallOptions,
 	LeaveCallOptions,
 	RemoveGroupDataCallOptions,
+	RemoveMemberAndRotateKeyCallOptions,
 	RotateEncryptionKeyCallOptions,
 	SetGroupNameCallOptions,
 	SetSuinsReverseLookupCallOptions,
@@ -73,6 +74,15 @@ export class MessagingGroupsTransactions {
 	rotateEncryptionKey(options: RotateEncryptionKeyCallOptions): Transaction {
 		const tx = new Transaction();
 		tx.add(this.#call.rotateEncryptionKey(options));
+		return tx;
+	}
+
+	/**
+	 * Creates a Transaction that atomically removes a member and rotates the encryption key.
+	 */
+	removeMemberAndRotateKey(options: RemoveMemberAndRotateKeyCallOptions): Transaction {
+		const tx = new Transaction();
+		tx.add(this.#call.removeMemberAndRotateKey(options));
 		return tx;
 	}
 
