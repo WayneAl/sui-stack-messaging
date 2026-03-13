@@ -7,6 +7,7 @@ use axum::{
 };
 use uuid::Uuid;
 
+use crate::auth::signature::verify_signature;
 use crate::auth::AuthContext;
 use crate::models::{Attachment, Message};
 use crate::state::AppState;
@@ -28,6 +29,7 @@ const MAX_PAGE_LIMIT: usize = 100;
 /// POST /messages - Create a new message
 pub async fn create_message(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Json(req): Json<CreateMessageRequest>,
 ) -> Result<(StatusCode, Json<CreateMessageResponse>), ApiError> {
     // Decode hex-encoded encrypted text
@@ -44,7 +46,21 @@ pub async fn create_message(
         )));
     }
 
+    // Verify per-message signature over canonical content
+    let signature = verify_message_signature(
+        &req.message_signature,
+        &req.group_id,
+        &req.encrypted_text,
+        &req.nonce,
+        req.key_version,
+        &auth,
+    )?;
+
     let attachments = decode_attachments(req.attachments)?;
+
+    // Build the public key with flag prefix for storage
+    let mut public_key_with_flag = vec![auth.scheme.flag()];
+    public_key_with_flag.extend_from_slice(&auth.public_key);
 
     // Create message domain object
     let message = Message::new(
@@ -54,6 +70,8 @@ pub async fn create_message(
         nonce,
         req.key_version,
         attachments,
+        signature,
+        public_key_with_flag,
     );
 
     // Store message
@@ -110,13 +128,21 @@ pub async fn get_messages(
 /// Only the original message sender can edit their own message.
 pub async fn update_message(
     State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
     Json(req): Json<UpdateMessageRequest>,
 ) -> Result<Json<EmptyResponse>, ApiError> {
-    // Fetch existing message to verify ownership
+    // Fetch existing message to verify ownership and group membership
     let existing_message = state.storage.get_message(req.message_id).await?;
 
-    // Only the original sender can edit their message
-    if existing_message.sender_wallet_addr != req.sender_address {
+    // Verify the message belongs to the group the user is authorized for (middleware-verified)
+    if auth.authorized_group.as_deref() != Some(existing_message.group_id.as_str()) {
+        return Err(ApiError::Forbidden(
+            "Message does not belong to the authorized group".to_string(),
+        ));
+    }
+
+    // Only the original sender can edit their message (middleware-verified address)
+    if existing_message.sender_wallet_addr != auth.sender_address {
         return Err(ApiError::Forbidden(
             "Only the original sender can edit this message".to_string(),
         ));
@@ -136,7 +162,20 @@ pub async fn update_message(
         )));
     }
 
+    // Verify per-message signature over canonical content
+    let signature = verify_message_signature(
+        &req.message_signature,
+        &req.group_id,
+        &req.encrypted_text,
+        &req.nonce,
+        req.key_version,
+        &auth,
+    )?;
+
     let attachments = decode_attachments(req.attachments)?;
+
+    let mut public_key_with_flag = vec![auth.scheme.flag()];
+    public_key_with_flag.extend_from_slice(&auth.public_key);
 
     // Update message
     state
@@ -147,6 +186,8 @@ pub async fn update_message(
             nonce,
             req.key_version,
             attachments,
+            signature,
+            public_key_with_flag,
         )
         .await?;
 
@@ -160,8 +201,15 @@ pub async fn delete_message(
     Path(message_id): Path<Uuid>,
     Extension(auth): Extension<AuthContext>,
 ) -> Result<Json<EmptyResponse>, ApiError> {
-    // Fetch existing message to verify ownership
+    // Fetch existing message to verify ownership and group membership
     let existing_message = state.storage.get_message(message_id).await?;
+
+    // Verify the message belongs to the group the user is authorized for
+    if auth.authorized_group.as_deref() != Some(existing_message.group_id.as_str()) {
+        return Err(ApiError::Forbidden(
+            "Message does not belong to the authorized group".to_string(),
+        ));
+    }
 
     // Only the original sender can delete their message
     if existing_message.sender_wallet_addr != auth.sender_address {
@@ -172,6 +220,39 @@ pub async fn delete_message(
 
     state.storage.delete_message(message_id).await?;
     Ok(Json(EmptyResponse {}))
+}
+
+/// Verifies the per-message signature over canonical content:
+/// "{group_id}:{encrypted_text}:{nonce}:{key_version}"
+fn verify_message_signature(
+    signature_hex: &str,
+    group_id: &str,
+    encrypted_text: &str,
+    nonce: &str,
+    key_version: i64,
+    auth: &AuthContext,
+) -> Result<Vec<u8>, ApiError> {
+    let signature_bytes = hex::decode(signature_hex)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid hex in message_signature: {}", e)))?;
+    if signature_bytes.len() != 64 {
+        return Err(ApiError::BadRequest(format!(
+            "message_signature must be exactly 64 bytes, got {}",
+            signature_bytes.len()
+        )));
+    }
+
+    // Canonical message: "group_id:encrypted_text:nonce:key_version"
+    let canonical = format!("{}:{}:{}:{}", group_id, encrypted_text, nonce, key_version);
+
+    verify_signature(
+        canonical.as_bytes(),
+        &signature_bytes,
+        &auth.public_key,
+        auth.scheme,
+    )
+    .map_err(|e| ApiError::BadRequest(format!("Message signature verification failed: {}", e)))?;
+
+    Ok(signature_bytes)
 }
 
 /// Decodes a list of attachment request DTOs into domain attachments.

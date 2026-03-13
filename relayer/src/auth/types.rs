@@ -9,12 +9,13 @@ pub struct AuthContext {
     /// Verified sender Sui address (derived from verified public key)
     pub sender_address: String,
 
-    /// The verified public key bytes
-    #[allow(dead_code)]
+    /// The verified public key bytes (without flag byte)
     pub public_key: Vec<u8>,
 
+    /// Signature scheme used (Ed25519, Secp256k1, Secp256r1)
+    pub scheme: crate::auth::schemes::SignatureScheme,
+
     /// Group ID the sender is authorized for (if membership check passed)
-    #[allow(dead_code)]
     pub authorized_group: Option<String>,
 }
 

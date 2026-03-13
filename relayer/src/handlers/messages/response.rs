@@ -42,6 +42,10 @@ pub struct MessageResponse {
     pub is_deleted: bool,
     pub sync_status: String,
     pub quilt_patch_id: Option<String>,
+    /// Hex-encoded 64-byte message signature for independent sender verification
+    pub signature: String,
+    /// Hex-encoded sender public key (flag byte + key bytes)
+    pub public_key: String,
 }
 
 impl From<Message> for MessageResponse {
@@ -71,6 +75,8 @@ impl From<Message> for MessageResponse {
             // Expose Walrus archival state so clients can track sync progress
             sync_status: msg.sync_status.to_string(),
             quilt_patch_id: msg.quilt_patch_id,
+            signature: hex::encode(&msg.signature),
+            public_key: hex::encode(&msg.public_key),
         }
     }
 }
@@ -97,6 +103,7 @@ pub struct EmptyResponse {}
 /// Uses untagged to serialize as either a single message or a list
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
+#[allow(clippy::large_enum_variant)]
 pub enum GetMessagesResponse {
     /// Single message response (when message_id is provided)
     Single(MessageResponse),

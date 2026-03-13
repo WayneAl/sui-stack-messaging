@@ -37,6 +37,11 @@ pub struct Message {
     /// Each entry contains the storage ID and encryption metadata needed by
     /// clients to download and decrypt the attachment.
     pub attachments: Vec<Attachment>,
+    /// 64-byte cryptographic signature over the message content.
+    /// Allows receivers to independently verify the sender authored this message.
+    pub signature: Vec<u8>,
+    /// Sender's public key (flag byte + key bytes) for signature verification.
+    pub public_key: Vec<u8>,
 }
 
 /// Tracks the synchronization status of a message with Walrus storage.
@@ -79,6 +84,7 @@ impl fmt::Display for SyncStatus {
     }
 }
 #[allow(dead_code)]
+#[allow(clippy::too_many_arguments)]
 impl Message {
     /// Creates a new message from HTTP POST request data.
     /// The message starts in SYNC_PENDING status and has no quilt_patch_id yet.
@@ -89,6 +95,8 @@ impl Message {
         nonce: Vec<u8>,
         key_version: i64,
         attachments: Vec<Attachment>,
+        signature: Vec<u8>,
+        public_key: Vec<u8>,
     ) -> Self {
         let now = Utc::now();
         Self {
@@ -104,6 +112,8 @@ impl Message {
             sync_status: SyncStatus::default(),
             quilt_patch_id: None,
             attachments,
+            signature,
+            public_key,
         }
     }
 
@@ -136,11 +146,15 @@ impl Message {
         nonce: Vec<u8>,
         key_version: i64,
         attachments: Vec<Attachment>,
+        signature: Vec<u8>,
+        public_key: Vec<u8>,
     ) {
         self.encrypted_msg = encrypted_msg;
         self.nonce = nonce;
         self.key_version = key_version;
         self.attachments = attachments;
+        self.signature = signature;
+        self.public_key = public_key;
         self.sync_status = SyncStatus::UpdatePending;
         self.updated_at = Utc::now();
     }

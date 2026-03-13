@@ -1,5 +1,7 @@
 //! Walrus API response types and error definitions.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -147,6 +149,14 @@ pub struct PatchInfo {
     /// Optional tags attached to this patch
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tags: Option<serde_json::Value>,
+}
+
+/// Per-patch metadata sent as the `_metadata` form part when storing a quilt.
+/// The publisher uses this to embed tags in the quilt index.
+#[derive(Debug, Clone, Serialize)]
+pub struct QuiltPatchMetadata {
+    pub identifier: String,
+    pub tags: HashMap<String, String>,
 }
 
 pub type WalrusResult<T> = Result<T, WalrusError>;

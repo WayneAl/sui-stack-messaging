@@ -6,7 +6,9 @@ use reqwest::multipart::{Form, Part};
 use reqwest::Client;
 use tracing::{debug, error};
 
-use super::types::{BlobStoreResponse, PatchInfo, QuiltStoreResponse, WalrusError, WalrusResult};
+use super::types::{
+    BlobStoreResponse, PatchInfo, QuiltPatchMetadata, QuiltStoreResponse, WalrusError, WalrusResult,
+};
 
 /// HTTP client for the Walrus publisher and aggregator APIs
 #[derive(Debug, Clone)]
@@ -38,10 +40,12 @@ impl WalrusClient {
     ///
     /// # Arguments
     /// * `patches` - Vec of (identifier, data) tuples
+    /// * `metadata` - Optional per-patch metadata with tags embedded in the quilt index
     /// * `epochs` - Number of Walrus epochs to store the quilt
     pub async fn store_quilt(
         &self,
         patches: Vec<(impl Into<String>, Vec<u8>)>,
+        metadata: Option<Vec<QuiltPatchMetadata>>,
         epochs: u32,
     ) -> WalrusResult<QuiltStoreResponse> {
         if patches.is_empty() {
@@ -66,6 +70,12 @@ impl WalrusClient {
             let identifier_string = identifier.into();
             let part = Part::bytes(data).file_name(identifier_string.clone());
             form = form.part(identifier_string, part);
+        }
+
+        // Add per-patch metadata (tags) as a _metadata JSON form part
+        if let Some(meta) = metadata {
+            let meta_json = serde_json::to_string(&meta).map_err(|e| WalrusError::ParseError(e.to_string()))?;
+            form = form.part("_metadata", Part::text(meta_json));
         }
 
         // Send the request

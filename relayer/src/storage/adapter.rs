@@ -82,6 +82,7 @@ pub type StorageResult<T> = Result<T, StorageError>;
 
 #[async_trait]
 #[allow(dead_code)]
+#[allow(clippy::too_many_arguments)]
 pub trait StorageAdapter: Send + Sync {
     /// Checks status of the storage backend.
     /// - **InMemoryStorage**: Always returns `Ok(())`
@@ -137,6 +138,8 @@ pub trait StorageAdapter: Send + Sync {
         nonce: Vec<u8>,
         key_version: i64,
         attachments: Vec<Attachment>,
+        signature: Vec<u8>,
+        public_key: Vec<u8>,
     ) -> StorageResult<Message>;
 
     /// Marks a message for deletion (soft delete).

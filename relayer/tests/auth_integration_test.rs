@@ -24,7 +24,7 @@ use messaging_relayer::{
     auth::{AuthState, InMemoryMembershipStore, MembershipStore, MessagingPermission},
     config::Config,
     handlers::health::health_check,
-    handlers::messages::{create_message, delete_message, get_messages},
+    handlers::messages::{create_message, delete_message, get_messages, update_message},
     state::AppState,
     storage::{create_storage, StorageType},
 };
@@ -67,7 +67,10 @@ fn create_test_app(membership_store: Arc<dyn MembershipStore>) -> Router {
 
     // All message routes require authentication (GET, POST, PUT, DELETE)
     let authenticated_routes = Router::new()
-        .route("/messages", get(get_messages).post(create_message))
+        .route(
+            "/messages",
+            get(get_messages).post(create_message).put(update_message),
+        )
         .route("/messages/:message_id", delete(delete_message))
         .layer(middleware::from_fn_with_state(
             auth_state,
@@ -220,13 +223,20 @@ async fn test_valid_auth_succeeds(
     let timestamp = chrono::Utc::now().timestamp();
     let public_key_with_flag = build_public_key_with_flag(flag, public_key);
 
+    // Per-message signature over canonical content
+    let encrypted_text = "deadbeef";
+    let nonce_hex = "000000000000000000000000";
+    let canonical = format!("{}:{}:{}:{}", group_id, encrypted_text, nonce_hex, 0);
+    let message_signature = sign_fn(canonical.as_bytes());
+
     let body = json!({
         "group_id": group_id,
-        "encrypted_text": "deadbeef",
-        "nonce": "000000000000000000000000",
+        "encrypted_text": encrypted_text,
+        "nonce": nonce_hex,
         "key_version": 0,
         "sender_address": address,
-        "timestamp": timestamp
+        "timestamp": timestamp,
+        "message_signature": message_signature
     });
 
     let body_str = serde_json::to_string(&body).unwrap();
@@ -480,13 +490,20 @@ async fn create_message_as_ed25519(app: &Router, group_id: &str) -> uuid::Uuid {
     let timestamp = chrono::Utc::now().timestamp();
     let public_key_with_flag = build_public_key_with_flag(0x00, ED25519_PUBLIC_KEY);
 
+    // Per-message signature over canonical content
+    let encrypted_text = "deadbeef";
+    let nonce_hex = random_nonce_hex();
+    let canonical = format!("{}:{}:{}:{}", group_id, encrypted_text, &nonce_hex, 0);
+    let message_signature = sign_bytes_ed25519(canonical.as_bytes());
+
     let body = json!({
         "group_id": group_id,
-        "encrypted_text": "deadbeef",
-        "nonce": random_nonce_hex(),
+        "encrypted_text": encrypted_text,
+        "nonce": nonce_hex,
         "key_version": 0,
         "sender_address": ED25519_ADDRESS,
-        "timestamp": timestamp
+        "timestamp": timestamp,
+        "message_signature": message_signature
     });
 
     let body_str = serde_json::to_string(&body).unwrap();
@@ -616,13 +633,16 @@ async fn test_replay_same_post_nonce_rejected() {
 
     // Use a fixed nonce so both requests have the same one
     let nonce = "aabbccddeeff001122334455";
+    let canonical = format!("{}:{}:{}:{}", group_id, "deadbeef", nonce, 0);
+    let message_signature = sign_bytes_ed25519(canonical.as_bytes());
     let body = json!({
         "group_id": group_id,
         "encrypted_text": "deadbeef",
         "nonce": nonce,
         "key_version": 0,
         "sender_address": ED25519_ADDRESS,
-        "timestamp": timestamp
+        "timestamp": timestamp,
+        "message_signature": message_signature
     });
 
     let body_str = serde_json::to_string(&body).unwrap();
@@ -672,13 +692,17 @@ async fn test_different_nonces_both_accepted() {
 
     // First request with nonce A
     let timestamp1 = chrono::Utc::now().timestamp();
+    let nonce1 = "aaaaaaaaaaaaaaaaaaaaaaaa";
+    let canonical1 = format!("{}:{}:{}:{}", group_id, "deadbeef", nonce1, 0);
+    let msg_sig1 = sign_bytes_ed25519(canonical1.as_bytes());
     let body1 = json!({
         "group_id": group_id,
         "encrypted_text": "deadbeef",
-        "nonce": "aaaaaaaaaaaaaaaaaaaaaaaa",
+        "nonce": nonce1,
         "key_version": 0,
         "sender_address": ED25519_ADDRESS,
-        "timestamp": timestamp1
+        "timestamp": timestamp1,
+        "message_signature": msg_sig1
     });
     let body_str1 = serde_json::to_string(&body1).unwrap();
     let signature1 = sign_bytes_ed25519(body_str1.as_bytes());
@@ -697,13 +721,17 @@ async fn test_different_nonces_both_accepted() {
 
     // Second request with nonce B (different nonce)
     let timestamp2 = chrono::Utc::now().timestamp();
+    let nonce2 = "bbbbbbbbbbbbbbbbbbbbbbbb";
+    let canonical2 = format!("{}:{}:{}:{}", group_id, "deadbeef", nonce2, 0);
+    let msg_sig2 = sign_bytes_ed25519(canonical2.as_bytes());
     let body2 = json!({
         "group_id": group_id,
         "encrypted_text": "deadbeef",
-        "nonce": "bbbbbbbbbbbbbbbbbbbbbbbb",
+        "nonce": nonce2,
         "key_version": 0,
         "sender_address": ED25519_ADDRESS,
-        "timestamp": timestamp2
+        "timestamp": timestamp2,
+        "message_signature": msg_sig2
     });
     let body_str2 = serde_json::to_string(&body2).unwrap();
     let signature2 = sign_bytes_ed25519(body_str2.as_bytes());
@@ -765,4 +793,210 @@ async fn test_get_replay_is_allowed() {
 
     let response2 = app.clone().oneshot(request2).await.unwrap();
     assert_eq!(response2.status(), StatusCode::OK);
+}
+
+// ==================== PUT Auth Tests ====================
+
+/// Helper: builds a signed PUT /messages request body and returns (body_str, request_signature)
+fn build_update_request(
+    message_id: &uuid::Uuid,
+    group_id: &str,
+    address: &str,
+    sign_fn: fn(&[u8]) -> String,
+    public_key_with_flag: &str,
+) -> Request<Body> {
+    let timestamp = chrono::Utc::now().timestamp();
+    let encrypted_text = "cafebabe";
+    let nonce_hex = random_nonce_hex();
+    let key_version = 1;
+
+    // Per-message signature over canonical content
+    let canonical = format!(
+        "{}:{}:{}:{}",
+        group_id, encrypted_text, nonce_hex, key_version
+    );
+    let message_signature = sign_fn(canonical.as_bytes());
+
+    let body = json!({
+        "message_id": message_id.to_string(),
+        "group_id": group_id,
+        "encrypted_text": encrypted_text,
+        "nonce": nonce_hex,
+        "key_version": key_version,
+        "sender_address": address,
+        "timestamp": timestamp,
+        "message_signature": message_signature,
+        "attachments": []
+    });
+
+    let body_str = serde_json::to_string(&body).unwrap();
+    let request_signature = sign_fn(body_str.as_bytes());
+
+    Request::builder()
+        .method(Method::PUT)
+        .uri("/messages")
+        .header("content-type", "application/json")
+        .header("x-signature", &request_signature)
+        .header("x-public-key", public_key_with_flag)
+        .body(Body::from(body_str))
+        .unwrap()
+}
+
+#[tokio::test]
+async fn test_update_own_message_succeeds() {
+    let membership_store = Arc::new(InMemoryMembershipStore::new()) as Arc<dyn MembershipStore>;
+    let group_id = "0xgroup_update_own";
+
+    // Grant Sender (to create) and Editor (to update) permissions
+    membership_store.add_member(
+        group_id,
+        ED25519_ADDRESS,
+        vec![
+            MessagingPermission::MessagingSender,
+            MessagingPermission::MessagingEditor,
+        ],
+    );
+
+    let app = create_test_app(membership_store);
+    let public_key_with_flag = build_public_key_with_flag(0x00, ED25519_PUBLIC_KEY);
+
+    // Create a message first
+    let message_id = create_message_as_ed25519(&app, group_id).await;
+
+    // Update the message as the same user
+    let request = build_update_request(
+        &message_id,
+        group_id,
+        ED25519_ADDRESS,
+        sign_bytes_ed25519,
+        &public_key_with_flag,
+    );
+
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_update_cross_group_returns_403() {
+    let membership_store = Arc::new(InMemoryMembershipStore::new()) as Arc<dyn MembershipStore>;
+    let group_a = "0xgroup_update_a";
+    let group_b = "0xgroup_update_b";
+
+    // User is a member of both groups
+    membership_store.add_member(
+        group_a,
+        ED25519_ADDRESS,
+        vec![
+            MessagingPermission::MessagingSender,
+            MessagingPermission::MessagingEditor,
+        ],
+    );
+    membership_store.add_member(
+        group_b,
+        ED25519_ADDRESS,
+        vec![MessagingPermission::MessagingEditor],
+    );
+
+    let app = create_test_app(membership_store);
+    let public_key_with_flag = build_public_key_with_flag(0x00, ED25519_PUBLIC_KEY);
+
+    // Create a message in group A
+    let message_id = create_message_as_ed25519(&app, group_a).await;
+
+    // Try to update the message while authenticated for group B (cross-group attack)
+    let request = build_update_request(
+        &message_id,
+        group_b,
+        ED25519_ADDRESS,
+        sign_bytes_ed25519,
+        &public_key_with_flag,
+    );
+
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn test_update_other_users_message_returns_403() {
+    let membership_store = Arc::new(InMemoryMembershipStore::new()) as Arc<dyn MembershipStore>;
+    let group_id = "0xgroup_update_other";
+
+    // Ed25519 user can create, Secp256k1 user can edit
+    membership_store.add_member(
+        group_id,
+        ED25519_ADDRESS,
+        vec![MessagingPermission::MessagingSender],
+    );
+    membership_store.add_member(
+        group_id,
+        SECP256K1_ADDRESS,
+        vec![MessagingPermission::MessagingEditor],
+    );
+
+    let app = create_test_app(membership_store);
+    let secp_pk_with_flag = build_public_key_with_flag(0x01, SECP256K1_PUBLIC_KEY);
+
+    // Create a message as Ed25519 user
+    let message_id = create_message_as_ed25519(&app, group_id).await;
+
+    // Try to update as Secp256k1 user (different sender)
+    let request = build_update_request(
+        &message_id,
+        group_id,
+        SECP256K1_ADDRESS,
+        sign_bytes_secp256k1,
+        &secp_pk_with_flag,
+    );
+
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+// ==================== Cross-Group DELETE Tests ====================
+
+#[tokio::test]
+async fn test_delete_cross_group_returns_403() {
+    let membership_store = Arc::new(InMemoryMembershipStore::new()) as Arc<dyn MembershipStore>;
+    let group_a = "0xgroup_delete_a";
+    let group_b = "0xgroup_delete_b";
+
+    // User is a member of both groups
+    membership_store.add_member(
+        group_a,
+        ED25519_ADDRESS,
+        vec![
+            MessagingPermission::MessagingSender,
+            MessagingPermission::MessagingDeleter,
+        ],
+    );
+    membership_store.add_member(
+        group_b,
+        ED25519_ADDRESS,
+        vec![MessagingPermission::MessagingDeleter],
+    );
+
+    let app = create_test_app(membership_store);
+    let public_key_with_flag = build_public_key_with_flag(0x00, ED25519_PUBLIC_KEY);
+
+    // Create a message in group A
+    let message_id = create_message_as_ed25519(&app, group_a).await;
+
+    // Try to delete while authenticated for group B (cross-group attack)
+    let timestamp = chrono::Utc::now().timestamp();
+    let canonical = format!("{}:{}:{}", timestamp, ED25519_ADDRESS, group_b);
+    let signature = sign_bytes_ed25519(canonical.as_bytes());
+
+    let request = Request::builder()
+        .method(Method::DELETE)
+        .uri(format!("/messages/{}", message_id))
+        .header("x-signature", &signature)
+        .header("x-public-key", &public_key_with_flag)
+        .header("x-sender-address", ED25519_ADDRESS)
+        .header("x-timestamp", timestamp.to_string())
+        .header("x-group-id", group_b)
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }

@@ -24,10 +24,22 @@ impl AttachmentRequest {
     pub fn try_into_attachment(self) -> Result<Attachment, String> {
         let nonce = hex::decode(&self.nonce)
             .map_err(|e| format!("Invalid hex in attachment nonce: {}", e))?;
+        if nonce.len() != 12 {
+            return Err(format!(
+                "Attachment nonce must be exactly 12 bytes, got {}",
+                nonce.len()
+            ));
+        }
         let encrypted_metadata = hex::decode(&self.encrypted_metadata)
             .map_err(|e| format!("Invalid hex in attachment encrypted_metadata: {}", e))?;
         let metadata_nonce = hex::decode(&self.metadata_nonce)
             .map_err(|e| format!("Invalid hex in attachment metadata_nonce: {}", e))?;
+        if metadata_nonce.len() != 12 {
+            return Err(format!(
+                "Attachment metadata_nonce must be exactly 12 bytes, got {}",
+                metadata_nonce.len()
+            ));
+        }
 
         Ok(Attachment {
             storage_id: self.storage_id,
@@ -51,6 +63,8 @@ pub struct CreateMessageRequest {
     pub key_version: i64,
     /// Sender's Sui wallet address
     pub sender_address: String,
+    /// Hex-encoded 64-byte signature over "{group_id}:{encrypted_text}:{nonce}:{key_version}"
+    pub message_signature: String,
     /// Attachments for this message (optional)
     #[serde(default)]
     pub attachments: Vec<AttachmentRequest>,
@@ -74,6 +88,8 @@ pub struct UpdateMessageRequest {
     pub nonce: String,
     /// Encryption key version
     pub key_version: i64,
+    /// Hex-encoded 64-byte signature over "{group_id}:{encrypted_text}:{nonce}:{key_version}"
+    pub message_signature: String,
     /// Attachments for this message (optional)
     #[serde(default)]
     pub attachments: Vec<AttachmentRequest>,

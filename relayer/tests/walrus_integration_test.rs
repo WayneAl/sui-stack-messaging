@@ -82,7 +82,7 @@ async fn test_store_quilt_and_verify_response() {
     ];
 
     let response = client
-        .store_quilt(patches, 1)
+        .store_quilt(patches, None, 1)
         .await
         .expect("store_quilt should succeed");
 
@@ -145,6 +145,7 @@ async fn test_quilt_patch_roundtrip() {
                 ("msg-rt1".to_string(), bytes1.clone()),
                 ("msg-rt2".to_string(), bytes2.clone()),
             ],
+            None,
             1,
         )
         .await
@@ -249,6 +250,7 @@ async fn test_list_patches_in_quilt() {
                 ("msg-list2".to_string(), vec![2]),
                 ("msg-list3".to_string(), vec![3]),
             ],
+            None,
             1,
         )
         .await
@@ -324,6 +326,7 @@ async fn test_get_patch_id_helper() {
                 ("msg-known-id".to_string(), vec![1, 2]),
                 ("msg-other-id".to_string(), vec![3, 4]),
             ],
+            None,
             1,
         )
         .await

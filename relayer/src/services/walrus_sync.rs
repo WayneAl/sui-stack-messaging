@@ -11,6 +11,7 @@
 //! - A fixed time interval (every N seconds, configurable)
 //! - A message count threshold (every X new messages, configurable)
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
@@ -20,7 +21,16 @@ use tracing::{debug, error, info, warn};
 use crate::config::Config;
 use crate::models::SyncStatus;
 use crate::storage::StorageAdapter;
+use crate::walrus::types::QuiltPatchMetadata;
 use crate::walrus::WalrusClient;
+
+/// Prefix for message patch identifiers in Walrus quilts.
+/// Must match MSG_PREFIX in walrus-discovery-indexer/src/constants.ts
+const MSG_PREFIX: &str = "msg-";
+
+/// Source tag value to identify patches from this relayer.
+/// Must match SOURCE_TAG in walrus-discovery-indexer/src/constants.ts
+const SOURCE_TAG: &str = "sui-messaging-relayer";
 
 /// Background service that syncs pending messages to Walrus storage.
 pub struct WalrusSyncService {
@@ -165,33 +175,50 @@ impl WalrusSyncService {
 
         info!("Syncing {} {} messages to Walrus", messages.len(), label);
 
-        // 2. Build patches: each message becomes a named patch in the quilt.
+        // 2. Build patches and per-patch metadata tags.
         // Serialize with the target status so the Walrus copy reflects the final state.
-        let patches: Vec<(String, Vec<u8>)> = messages
-            .iter()
-            .filter_map(|msg| {
-                let identifier = format!("msg-{}", msg.id);
-                let mut msg_for_walrus = msg.clone();
-                msg_for_walrus.sync_status = to_status;
-                match serde_json::to_vec(&msg_for_walrus) {
-                    Ok(data) => Some((identifier, data)),
-                    Err(e) => {
-                        warn!("Failed to serialize {} message {}: {}", label, msg.id, e);
-                        None
-                    }
+        let mut patches: Vec<(String, Vec<u8>)> = Vec::new();
+        let mut metadata: Vec<QuiltPatchMetadata> = Vec::new();
+
+        for msg in &messages {
+            let identifier = format!("{}{}", MSG_PREFIX, msg.id);
+            let mut msg_for_walrus = msg.clone();
+            msg_for_walrus.sync_status = to_status;
+
+            match serde_json::to_vec(&msg_for_walrus) {
+                Ok(data) => {
+                    // Build tags so the indexer can read metadata from the quilt index
+                    let mut tags = HashMap::new();
+                    tags.insert("source".into(), SOURCE_TAG.into());
+                    tags.insert("group_id".into(), msg.group_id.clone());
+                    tags.insert("sender".into(), msg.sender_wallet_addr.clone());
+                    tags.insert("sync_status".into(), to_status.to_string());
+                    tags.insert(
+                        "order".into(),
+                        msg.order.map(|o| o.to_string()).unwrap_or_default(),
+                    );
+
+                    metadata.push(QuiltPatchMetadata {
+                        identifier: identifier.clone(),
+                        tags,
+                    });
+                    patches.push((identifier, data));
                 }
-            })
-            .collect();
+                Err(e) => {
+                    warn!("Failed to serialize {} message {}: {}", label, msg.id, e);
+                }
+            }
+        }
 
         if patches.is_empty() {
             debug!("No patches to upload after serialization");
             return Ok(());
         }
 
-        // 3. Upload the batch as a single quilt to Walrus
+        // 3. Upload the batch as a single quilt to Walrus with per-patch tags
         let response = self
             .walrus_client
-            .store_quilt(patches, self.storage_epochs)
+            .store_quilt(patches, Some(metadata), self.storage_epochs)
             .await?;
 
         info!(
@@ -203,7 +230,7 @@ impl WalrusSyncService {
 
         // 4. Update each message's sync_status with its new quilt_patch_id
         for msg in &messages {
-            let identifier = format!("msg-{}", msg.id);
+            let identifier = format!("{}{}", MSG_PREFIX, msg.id);
             match response.get_patch_id(&identifier) {
                 Some(patch_id) => {
                     if let Err(e) = self

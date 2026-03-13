@@ -10,6 +10,9 @@ use tokio::time::Duration;
 use wiremock::matchers::{method, path_regex};
 use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
 
+use messaging_relayer::auth::{
+    AuthState, InMemoryMembershipStore, MembershipStore, MessagingPermission,
+};
 use messaging_relayer::config::Config;
 use messaging_relayer::models::{Message, SyncStatus};
 use messaging_relayer::services::WalrusSyncService;
@@ -53,6 +56,8 @@ fn create_test_message(group_id: &str) -> Message {
         nonce,
         0,
         vec![],
+        vec![0u8; 64], // dummy signature for tests
+        vec![0u8; 33], // dummy public key for tests
     )
 }
 
@@ -657,39 +662,99 @@ async fn test_sync_deleted_message_contains_deleted_status() {
 /// Verifies that POST /messages sends a notification on the sync channel
 #[tokio::test]
 async fn test_create_message_sends_sync_notification() {
+    use std::borrow::Cow;
+
     use axum::body::Body;
     use axum::http::{Method, Request, StatusCode};
+    use axum::middleware;
     use axum::routing::post;
     use axum::Router;
     use serde_json::json;
+    use sui_crypto::{ed25519::Ed25519PrivateKey, SuiSigner};
+    use sui_sdk_types::PersonalMessage;
     use tower::ServiceExt;
 
     use messaging_relayer::handlers::messages::create_message;
     use messaging_relayer::state::AppState;
 
+    // Ed25519 test wallet (same as auth_integration_test)
+    let private_key_bytes: [u8; 32] =
+        hex::decode("4ac9bd5399f7b41da4f00ec612c4e6521a1c756c41578ed5c15133f96ab9ea78")
+            .unwrap()
+            .try_into()
+            .unwrap();
+    let signing_key = Ed25519PrivateKey::new(private_key_bytes);
+    let public_key_hex = "dec9c24a98da1187e30a5824ca2ee1e91e956b7dd6970590651d7d46c5e2ed41";
+    let address = "0xc45d73cf687682db23be0ebdef5bc203585315b2d6a5a6a613b941e4d4a6a0e7";
+
+    // Build public key with Ed25519 flag (0x00)
+    let mut pk_with_flag = vec![0x00u8];
+    pk_with_flag.extend_from_slice(&hex::decode(public_key_hex).unwrap());
+    let public_key_with_flag_hex = hex::encode(&pk_with_flag);
+
+    // Helper to sign bytes as PersonalMessage and return hex-encoded 64-byte signature
+    let sign = |msg: &[u8]| -> String {
+        let personal = PersonalMessage(Cow::Borrowed(msg));
+        let user_sig = signing_key.sign_personal_message(&personal).unwrap();
+        let sig_bytes = &user_sig.to_bytes()[1..65]; // skip flag byte, take 64 bytes
+        hex::encode(sig_bytes)
+    };
+
     let storage: Arc<dyn StorageAdapter> = Arc::new(InMemoryStorage::new());
     let (sync_tx, mut sync_rx) = mpsc::unbounded_channel::<()>();
     let config = Config::default();
-    let app_state = AppState::new(storage, config, sync_tx);
+    let app_state = AppState::new(storage, config.clone(), sync_tx);
+
+    // Set up auth middleware with test membership
+    let membership_store = Arc::new(InMemoryMembershipStore::new()) as Arc<dyn MembershipStore>;
+    let group_id = "test-group";
+    membership_store.add_member(
+        group_id,
+        address,
+        vec![MessagingPermission::MessagingSender],
+    );
+
+    let auth_state = AuthState {
+        membership_store,
+        config: config.clone(),
+    };
 
     let app = Router::new()
         .route("/messages", post(create_message))
+        .layer(middleware::from_fn_with_state(
+            auth_state,
+            messaging_relayer::auth::auth_middleware,
+        ))
         .with_state(app_state);
 
+    // Per-message signature over canonical content
+    let encrypted_text = "deadbeef";
+    let nonce_hex = "000000000000000000000000";
+    let canonical = format!("{}:{}:{}:{}", group_id, encrypted_text, nonce_hex, 0);
+    let message_signature = sign(canonical.as_bytes());
+
+    let timestamp = chrono::Utc::now().timestamp();
     let body = json!({
-        "group_id": "test-group",
-        "sender_address": "0xtest",
-        "encrypted_text": "deadbeef",
-        "nonce": "000000000000000000000000",
+        "group_id": group_id,
+        "sender_address": address,
+        "encrypted_text": encrypted_text,
+        "nonce": nonce_hex,
         "key_version": 0,
+        "timestamp": timestamp,
+        "message_signature": message_signature,
         "attachments": []
     });
+
+    let body_str = serde_json::to_string(&body).unwrap();
+    let request_signature = sign(body_str.as_bytes());
 
     let request = Request::builder()
         .method(Method::POST)
         .uri("/messages")
         .header("content-type", "application/json")
-        .body(Body::from(serde_json::to_string(&body).unwrap()))
+        .header("x-signature", &request_signature)
+        .header("x-public-key", &public_key_with_flag_hex)
+        .body(Body::from(body_str))
         .unwrap();
 
     let response = app.oneshot(request).await.unwrap();

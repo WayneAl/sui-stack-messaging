@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use chrono::Utc;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::RwLock;
 use uuid::Uuid;
 
@@ -13,11 +13,15 @@ use super::adapter::{StorageAdapter, StorageError, StorageResult};
 /// In-memory storage backend using HashMaps protected by RwLock for thread-safety.
 /// RwLock allows either many readers OR one writer at a time
 /// Thread-safe for concurrent access. Data is lost on restart.
+///
+/// Lock ordering: always acquire `messages` before `nonces` to prevent deadlocks.
 pub struct InMemoryStorage {
     /// All messages indexed by ID
     messages: RwLock<HashMap<Uuid, Message>>,
     /// Tracks the highest order number per group
     group_orders: RwLock<HashMap<String, i64>>,
+    /// All message nonces for O(1) duplicate detection
+    nonces: RwLock<HashSet<Vec<u8>>>,
 }
 
 impl InMemoryStorage {
@@ -25,6 +29,7 @@ impl InMemoryStorage {
         Self {
             messages: RwLock::new(HashMap::new()),
             group_orders: RwLock::new(HashMap::new()),
+            nonces: RwLock::new(HashSet::new()),
         }
     }
 
@@ -67,11 +72,16 @@ impl StorageAdapter for InMemoryStorage {
             return Err(StorageError::DuplicateId(message.id));
         }
 
-        // Check for duplicate nonce (replay protection)
-        if messages.values().any(|m| m.nonce == message.nonce) {
+        // O(1) nonce duplicate check via HashSet
+        let mut nonces = self
+            .nonces
+            .write()
+            .map_err(|e| StorageError::OperationFailed(format!("Lock poisoned: {}", e)))?;
+        if nonces.contains(&message.nonce) {
             return Err(StorageError::DuplicateNonce);
         }
 
+        nonces.insert(message.nonce.clone());
         messages.insert(message.id, message.clone());
 
         Ok(message)
@@ -131,6 +141,8 @@ impl StorageAdapter for InMemoryStorage {
         nonce: Vec<u8>,
         key_version: i64,
         attachments: Vec<Attachment>,
+        signature: Vec<u8>,
+        public_key: Vec<u8>,
     ) -> StorageResult<Message> {
         let mut messages = self
             .messages
@@ -139,7 +151,26 @@ impl StorageAdapter for InMemoryStorage {
 
         let message = messages.get_mut(&id).ok_or(StorageError::NotFound(id))?;
 
-        message.update_content(encrypted_msg, nonce, key_version, attachments);
+        // Check new nonce isn't already used by another message
+        let mut nonces = self
+            .nonces
+            .write()
+            .map_err(|e| StorageError::OperationFailed(format!("Lock poisoned: {}", e)))?;
+        if message.nonce != nonce && nonces.contains(&nonce) {
+            return Err(StorageError::DuplicateNonce);
+        }
+        // Swap old nonce for new one in the set
+        nonces.remove(&message.nonce);
+        nonces.insert(nonce.clone());
+
+        message.update_content(
+            encrypted_msg,
+            nonce,
+            key_version,
+            attachments,
+            signature,
+            public_key,
+        );
 
         Ok(message.clone())
     }
@@ -220,6 +251,8 @@ mod tests {
             unique_nonce(0),
             0,
             vec![],
+            vec![0u8; 64],
+            vec![0u8; 33],
         );
 
         let created = storage.create_message(msg).await.unwrap();
@@ -239,6 +272,8 @@ mod tests {
             unique_nonce(1),
             0,
             vec![],
+            vec![0u8; 64],
+            vec![0u8; 33],
         );
         let msg2 = Message::new(
             "group_1".to_string(),
@@ -247,6 +282,8 @@ mod tests {
             unique_nonce(2),
             0,
             vec![],
+            vec![0u8; 64],
+            vec![0u8; 33],
         );
         let msg3 = Message::new(
             "group_1".to_string(),
@@ -255,6 +292,8 @@ mod tests {
             unique_nonce(3),
             0,
             vec![],
+            vec![0u8; 64],
+            vec![0u8; 33],
         );
 
         let created1 = storage.create_message(msg1).await.unwrap();
@@ -277,6 +316,8 @@ mod tests {
             unique_nonce(99),
             0,
             vec![],
+            vec![0u8; 64],
+            vec![0u8; 33],
         );
         let msg2 = Message::new(
             "group_1".to_string(),
@@ -285,6 +326,8 @@ mod tests {
             unique_nonce(99), // same nonce
             0,
             vec![],
+            vec![0u8; 64],
+            vec![0u8; 33],
         );
 
         storage.create_message(msg1).await.unwrap();
@@ -303,6 +346,8 @@ mod tests {
             unique_nonce(0),
             0,
             vec![],
+            vec![0u8; 64],
+            vec![0u8; 33],
         );
         let msg_id = msg.id;
 
@@ -332,6 +377,8 @@ mod tests {
                 unique_nonce(i as u8),
                 0,
                 vec![],
+                vec![0u8; 64],
+                vec![0u8; 33],
             );
             storage.create_message(msg).await.unwrap();
         }
@@ -344,6 +391,8 @@ mod tests {
                 unique_nonce(10 + i as u8),
                 0,
                 vec![],
+                vec![0u8; 64],
+                vec![0u8; 33],
             );
             storage.create_message(msg).await.unwrap();
         }
@@ -373,6 +422,8 @@ mod tests {
                 unique_nonce(i),
                 0,
                 vec![],
+                vec![0u8; 64],
+                vec![0u8; 33],
             );
             storage.create_message(msg).await.unwrap();
         }
@@ -401,6 +452,8 @@ mod tests {
                 unique_nonce(i),
                 0,
                 vec![],
+                vec![0u8; 64],
+                vec![0u8; 33],
             );
             storage.create_message(msg).await.unwrap();
         }
@@ -427,6 +480,8 @@ mod tests {
             unique_nonce(0),
             0,
             vec![],
+            vec![0u8; 64],
+            vec![0u8; 33],
         );
         let msg_id = msg.id;
 
@@ -446,6 +501,8 @@ mod tests {
             unique_nonce(0),
             0,
             vec![],
+            vec![0u8; 64],
+            vec![0u8; 33],
         );
         let msg_id = msg.id;
 
@@ -472,6 +529,8 @@ mod tests {
                 unique_nonce(i),
                 0,
                 vec![],
+                vec![0u8; 64],
+                vec![0u8; 33],
             );
             storage.create_message(msg).await.unwrap();
         }
@@ -487,9 +546,9 @@ mod tests {
     fn sample_attachment(id: &str) -> Attachment {
         Attachment {
             storage_id: format!("patch-{}", id),
-            nonce: vec![0xaa, 0xbb],
+            nonce: vec![0xaa; 12],
             encrypted_metadata: vec![0xca, 0xfe],
-            metadata_nonce: vec![0xdd, 0xee],
+            metadata_nonce: vec![0xdd; 12],
         }
     }
 
@@ -505,6 +564,8 @@ mod tests {
             unique_nonce(50),
             0,
             attachments.clone(),
+            vec![0u8; 64],
+            vec![0u8; 33],
         );
         let msg_id = msg.id;
 
@@ -526,6 +587,8 @@ mod tests {
             unique_nonce(60),
             0,
             vec![sample_attachment("original")],
+            vec![0u8; 64],
+            vec![0u8; 33],
         );
         let msg_id = msg.id;
         storage.create_message(msg).await.unwrap();
@@ -538,6 +601,8 @@ mod tests {
                 unique_nonce(61),
                 1,
                 new_attachments.clone(),
+                vec![0u8; 64],
+                vec![0u8; 33],
             )
             .await
             .unwrap();

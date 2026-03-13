@@ -289,6 +289,7 @@ pub async fn auth_middleware(
     let auth_context = AuthContext {
         sender_address: sender_address.clone(),
         public_key: public_key_bytes.to_vec(),
+        scheme,
         authorized_group: Some(group_id.clone()),
     };
 
