@@ -51,7 +51,7 @@ describe('CRUD Edge Cases', () => {
 			namespaceId: messagingNamespaceId,
 			versionId: messagingVersionId,
 			keypair,
-			relayer: { relayerUrl, signer: keypair },
+			relayer: { relayerUrl },
 			seal:
 				sealServerConfigs.length > 0
 					? { serverConfigs: sealServerConfigs, verifyKeyServers: false }
@@ -102,6 +102,7 @@ describe('CRUD Edge Cases', () => {
 		it('should return 404 for non-existent message', async () => {
 			await expect(
 				owner.client.messaging.deleteMessage({
+					signer: owner.keypair,
 					groupRef: { uuid },
 					messageId: '00000000-0000-0000-0000-000000000000',
 				}),
@@ -112,11 +113,13 @@ describe('CRUD Edge Cases', () => {
 
 		it('should handle delete of already deleted message', async () => {
 			const { messageId } = await owner.client.messaging.sendMessage({
+				signer: owner.keypair,
 				groupRef: { uuid },
 				text: 'Delete me twice',
 			});
 
 			await owner.client.messaging.deleteMessage({
+				signer: owner.keypair,
 				groupRef: { uuid },
 				messageId,
 			});
@@ -124,6 +127,7 @@ describe('CRUD Edge Cases', () => {
 			// Second delete — could be idempotent (200) or error
 			try {
 				await owner.client.messaging.deleteMessage({
+					signer: owner.keypair,
 					groupRef: { uuid },
 					messageId,
 				});
@@ -140,6 +144,7 @@ describe('CRUD Edge Cases', () => {
 
 		beforeAll(async () => {
 			const result = await owner.client.messaging.sendMessage({
+				signer: owner.keypair,
 				groupRef: { uuid },
 				text: 'Original message content',
 			});
@@ -149,6 +154,7 @@ describe('CRUD Edge Cases', () => {
 		it('should return 404 when updating non-existent message', async () => {
 			await expect(
 				owner.client.messaging.editMessage({
+					signer: owner.keypair,
 					groupRef: { uuid },
 					messageId: '00000000-0000-0000-0000-000000000000',
 					text: 'Updated content',
@@ -160,11 +166,13 @@ describe('CRUD Edge Cases', () => {
 
 		it('should handle update of deleted message', async () => {
 			const { messageId } = await owner.client.messaging.sendMessage({
+				signer: owner.keypair,
 				groupRef: { uuid },
 				text: 'Will be deleted then updated',
 			});
 
 			await owner.client.messaging.deleteMessage({
+				signer: owner.keypair,
 				groupRef: { uuid },
 				messageId,
 			});
@@ -172,6 +180,7 @@ describe('CRUD Edge Cases', () => {
 			// Updating a deleted message — could be allowed (200), bad request (400), or not found (404)
 			try {
 				await owner.client.messaging.editMessage({
+					signer: owner.keypair,
 					groupRef: { uuid },
 					messageId,
 					text: 'Trying to update deleted',
@@ -186,6 +195,7 @@ describe('CRUD Edge Cases', () => {
 		it('should reject update by user with Editor permission but not owner', async () => {
 			await expect(
 				editor.client.messaging.editMessage({
+					signer: editor.keypair,
 					groupRef: { uuid },
 					messageId: messageToUpdate,
 					text: 'Hijacked by editor',
@@ -208,6 +218,7 @@ describe('CRUD Edge Cases', () => {
 
 			await expect(
 				owner.client.messaging.getMessages({
+					signer: owner.keypair,
 					groupRef: { uuid: otherUuid },
 				}),
 			).rejects.toSatisfy((error: RelayerTransportError) => {
@@ -217,6 +228,7 @@ describe('CRUD Edge Cases', () => {
 
 		it('should return messages when fetching with valid permissions', async () => {
 			const result = await owner.client.messaging.getMessages({
+				signer: owner.keypair,
 				groupRef: { uuid },
 			});
 

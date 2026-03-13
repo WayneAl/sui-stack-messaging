@@ -51,11 +51,13 @@ describe('Encryption Round-Trip', () => {
 			const plaintext = 'Hello, encrypted world! 🔐';
 
 			const { messageId } = await group.member.client.messaging.sendMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				text: plaintext,
 			});
 
 			const msg = await group.member.client.messaging.getMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				messageId,
 			});
@@ -73,6 +75,7 @@ describe('Encryption Round-Trip', () => {
 			const messageIds: string[] = [];
 			for (const text of messages) {
 				const { messageId } = await group.member.client.messaging.sendMessage({
+					signer: group.member.keypair,
 					groupRef: { uuid: group.uuid },
 					text,
 				});
@@ -82,6 +85,7 @@ describe('Encryption Round-Trip', () => {
 			// Verify each message decrypts to its original plaintext
 			for (let i = 0; i < messages.length; i++) {
 				const msg = await group.member.client.messaging.getMessage({
+					signer: group.member.keypair,
 					groupRef: { uuid: group.uuid },
 					messageId: messageIds[i],
 				});
@@ -93,11 +97,13 @@ describe('Encryption Round-Trip', () => {
 			const plaintext = '特殊文字テスト 🎉 <script>alert("xss")</script> "quotes" & symbols';
 
 			const { messageId } = await group.member.client.messaging.sendMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				text: plaintext,
 			});
 
 			const msg = await group.member.client.messaging.getMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				messageId,
 			});
@@ -108,6 +114,7 @@ describe('Encryption Round-Trip', () => {
 		it('non-member cannot read messages (403)', async () => {
 			await expect(
 				group.nonMember.client.messaging.getMessages({
+					signer: group.nonMember.keypair,
 					groupRef: { uuid: group.uuid },
 				}),
 			).rejects.toSatisfy((error: RelayerTransportError) => {
@@ -121,11 +128,13 @@ describe('Encryption Round-Trip', () => {
 			const largeText = 'A'.repeat(10 * 1024);
 
 			const { messageId } = await group.member.client.messaging.sendMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				text: largeText,
 			});
 
 			const msg = await group.member.client.messaging.getMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				messageId,
 			});
@@ -141,12 +150,14 @@ describe('Encryption Round-Trip', () => {
 			const updated = 'Updated encrypted text';
 
 			const { messageId } = await group.member.client.messaging.sendMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				text: original,
 			});
 
 			// Verify original
 			let msg = await group.member.client.messaging.getMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				messageId,
 			});
@@ -154,6 +165,7 @@ describe('Encryption Round-Trip', () => {
 
 			// Edit
 			await group.member.client.messaging.editMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				messageId,
 				text: updated,
@@ -161,6 +173,7 @@ describe('Encryption Round-Trip', () => {
 
 			// Verify updated
 			msg = await group.member.client.messaging.getMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				messageId,
 			});

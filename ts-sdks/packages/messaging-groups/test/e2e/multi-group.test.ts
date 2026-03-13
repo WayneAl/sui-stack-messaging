@@ -56,7 +56,7 @@ describe('Multi-Group Scenarios', () => {
 			namespaceId: messagingNamespaceId,
 			versionId: messagingVersionId,
 			keypair,
-			relayer: { relayerUrl, signer: keypair },
+			relayer: { relayerUrl },
 			seal:
 				sealServerConfigs.length > 0
 					? { serverConfigs: sealServerConfigs, verifyKeyServers: false }
@@ -138,6 +138,7 @@ describe('Multi-Group Scenarios', () => {
 	describe('Group-Specific Permissions', () => {
 		it('Alice can send to Group A', async () => {
 			const result = await alice.client.messaging.sendMessage({
+				signer: alice.keypair,
 				groupRef: { uuid: uuidA },
 				text: 'Alice message to Group A',
 			});
@@ -147,6 +148,7 @@ describe('Multi-Group Scenarios', () => {
 		it('Alice cannot send to Group B', async () => {
 			await expect(
 				alice.client.messaging.sendMessage({
+					signer: alice.keypair,
 					groupRef: { uuid: uuidB },
 					text: 'Alice trying Group B',
 				}),
@@ -155,6 +157,7 @@ describe('Multi-Group Scenarios', () => {
 
 		it('Bob can send to Group B', async () => {
 			const result = await bob.client.messaging.sendMessage({
+				signer: bob.keypair,
 				groupRef: { uuid: uuidB },
 				text: 'Bob message to Group B',
 			});
@@ -164,6 +167,7 @@ describe('Multi-Group Scenarios', () => {
 		it('Bob cannot send to Group A', async () => {
 			await expect(
 				bob.client.messaging.sendMessage({
+					signer: bob.keypair,
 					groupRef: { uuid: uuidA },
 					text: 'Bob trying Group A',
 				}),
@@ -174,6 +178,7 @@ describe('Multi-Group Scenarios', () => {
 	describe('Multi-Group Membership', () => {
 		it('Charlie can send to Group A', async () => {
 			const result = await charlie.client.messaging.sendMessage({
+				signer: charlie.keypair,
 				groupRef: { uuid: uuidA },
 				text: 'Charlie message to Group A',
 			});
@@ -182,6 +187,7 @@ describe('Multi-Group Scenarios', () => {
 
 		it('Charlie can send to Group B', async () => {
 			const result = await charlie.client.messaging.sendMessage({
+				signer: charlie.keypair,
 				groupRef: { uuid: uuidB },
 				text: 'Charlie message to Group B',
 			});
@@ -190,10 +196,12 @@ describe('Multi-Group Scenarios', () => {
 
 		it('Charlie can send to both groups in sequence', async () => {
 			const resultA = await charlie.client.messaging.sendMessage({
+				signer: charlie.keypair,
 				groupRef: { uuid: uuidA },
 				text: 'Charlie sequential A',
 			});
 			const resultB = await charlie.client.messaging.sendMessage({
+				signer: charlie.keypair,
 				groupRef: { uuid: uuidB },
 				text: 'Charlie sequential B',
 			});
@@ -207,6 +215,7 @@ describe('Multi-Group Scenarios', () => {
 		it('Outsider cannot send to Group A', async () => {
 			await expect(
 				outsider.client.messaging.sendMessage({
+					signer: outsider.keypair,
 					groupRef: { uuid: uuidA },
 					text: 'Outsider trying Group A',
 				}),
@@ -216,6 +225,7 @@ describe('Multi-Group Scenarios', () => {
 		it('Outsider cannot send to Group B', async () => {
 			await expect(
 				outsider.client.messaging.sendMessage({
+					signer: outsider.keypair,
 					groupRef: { uuid: uuidB },
 					text: 'Outsider trying Group B',
 				}),
@@ -225,6 +235,7 @@ describe('Multi-Group Scenarios', () => {
 		it('Outsider cannot read messages (requires Reader permission)', async () => {
 			await expect(
 				outsider.client.messaging.getMessages({
+					signer: outsider.keypair,
 					groupRef: { uuid: uuidA },
 				}),
 			).rejects.toSatisfy((error: RelayerTransportError) => {
@@ -239,12 +250,14 @@ describe('Multi-Group Scenarios', () => {
 
 		beforeAll(async () => {
 			const resultA = await charlie.client.messaging.sendMessage({
+				signer: charlie.keypair,
 				groupRef: { uuid: uuidA },
 				text: 'Group A isolation test',
 			});
 			groupAMessageId = resultA.messageId;
 
 			const resultB = await charlie.client.messaging.sendMessage({
+				signer: charlie.keypair,
 				groupRef: { uuid: uuidB },
 				text: 'Group B isolation test',
 			});
@@ -253,6 +266,7 @@ describe('Multi-Group Scenarios', () => {
 
 		it('Group A messages are not visible in Group B', async () => {
 			const result = await charlie.client.messaging.getMessages({
+				signer: charlie.keypair,
 				groupRef: { uuid: uuidB },
 				limit: 100,
 			});
@@ -263,6 +277,7 @@ describe('Multi-Group Scenarios', () => {
 
 		it('Group B messages are not visible in Group A', async () => {
 			const result = await charlie.client.messaging.getMessages({
+				signer: charlie.keypair,
 				groupRef: { uuid: uuidA },
 				limit: 100,
 			});
@@ -273,10 +288,12 @@ describe('Multi-Group Scenarios', () => {
 
 		it('Each group has only its own messages', async () => {
 			const groupAMessages = await charlie.client.messaging.getMessages({
+				signer: charlie.keypair,
 				groupRef: { uuid: uuidA },
 				limit: 100,
 			});
 			const groupBMessages = await charlie.client.messaging.getMessages({
+				signer: charlie.keypair,
 				groupRef: { uuid: uuidB },
 				limit: 100,
 			});
@@ -294,6 +311,7 @@ describe('Multi-Group Scenarios', () => {
 
 		beforeAll(async () => {
 			const result = await alice.client.messaging.sendMessage({
+				signer: alice.keypair,
 				groupRef: { uuid: uuidA },
 				text: 'Alice message for cross-group test',
 			});
@@ -303,6 +321,7 @@ describe('Multi-Group Scenarios', () => {
 		it("Bob cannot update Alice's message in Group A (not a member)", async () => {
 			await expect(
 				bob.client.messaging.editMessage({
+					signer: bob.keypair,
 					groupRef: { uuid: uuidA },
 					messageId: groupAMessage,
 					text: 'Bob hijacking Alice',
@@ -313,6 +332,7 @@ describe('Multi-Group Scenarios', () => {
 		it("Bob cannot delete Alice's message in Group A (not a member)", async () => {
 			await expect(
 				bob.client.messaging.deleteMessage({
+					signer: bob.keypair,
 					groupRef: { uuid: uuidA },
 					messageId: groupAMessage,
 				}),

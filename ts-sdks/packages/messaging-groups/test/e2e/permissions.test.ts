@@ -52,7 +52,7 @@ describe('Permission Synchronization', () => {
 			namespaceId: messagingNamespaceId,
 			versionId: messagingVersionId,
 			keypair,
-			relayer: { relayerUrl, signer: keypair },
+			relayer: { relayerUrl },
 			seal:
 				sealServerConfigs.length > 0
 					? { serverConfigs: sealServerConfigs, verifyKeyServers: false }
@@ -90,6 +90,7 @@ describe('Permission Synchronization', () => {
 		it('user without permissions should be rejected', async () => {
 			await expect(
 				user1.client.messaging.sendMessage({
+					signer: user1.keypair,
 					groupRef: { uuid },
 					text: 'Unauthorized message',
 				}),
@@ -110,6 +111,7 @@ describe('Permission Synchronization', () => {
 			await new Promise((resolve) => setTimeout(resolve, SYNC_WAIT_TIME));
 
 			const result = await user1.client.messaging.sendMessage({
+				signer: user1.keypair,
 				groupRef: { uuid },
 				text: 'Now I have permission!',
 			});
@@ -136,6 +138,7 @@ describe('Permission Synchronization', () => {
 			await new Promise((resolve) => setTimeout(resolve, SYNC_WAIT_TIME));
 
 			const result = await user2.client.messaging.sendMessage({
+				signer: user2.keypair,
 				groupRef: { uuid },
 				text: 'User2 with multiple permissions',
 			});
@@ -148,6 +151,7 @@ describe('Permission Synchronization', () => {
 		it('should revoke permission and block user', async () => {
 			// Verify user1 can still send
 			await user1.client.messaging.sendMessage({
+				signer: user1.keypair,
 				groupRef: { uuid },
 				text: 'Before revoke',
 			});
@@ -165,6 +169,7 @@ describe('Permission Synchronization', () => {
 
 			await expect(
 				user1.client.messaging.sendMessage({
+					signer: user1.keypair,
 					groupRef: { uuid },
 					text: 'After revoke',
 				}),
@@ -180,6 +185,7 @@ describe('Permission Synchronization', () => {
 		it('should remove member and block all operations', async () => {
 			// Verify user2 can still send
 			await user2.client.messaging.sendMessage({
+				signer: user2.keypair,
 				groupRef: { uuid },
 				text: 'Before removal',
 			});
@@ -194,6 +200,7 @@ describe('Permission Synchronization', () => {
 
 			await expect(
 				user2.client.messaging.sendMessage({
+					signer: user2.keypair,
 					groupRef: { uuid },
 					text: 'After removal',
 				}),
@@ -208,6 +215,7 @@ describe('Permission Synchronization', () => {
 	describe('Admin Operations', () => {
 		it('admin permissions synced from group creation', async () => {
 			const result = await admin.client.messaging.sendMessage({
+				signer: admin.keypair,
 				groupRef: { uuid },
 				text: 'Admin message',
 			});

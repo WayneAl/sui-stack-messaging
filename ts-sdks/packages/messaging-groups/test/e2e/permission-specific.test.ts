@@ -59,7 +59,7 @@ describe('Permission-Specific Operations', () => {
 			namespaceId: messagingNamespaceId,
 			versionId: messagingVersionId,
 			keypair,
-			relayer: { relayerUrl, signer: keypair },
+			relayer: { relayerUrl },
 			seal:
 				sealServerConfigs.length > 0
 					? { serverConfigs: sealServerConfigs, verifyKeyServers: false }
@@ -137,6 +137,7 @@ describe('Permission-Specific Operations', () => {
 
 		// Create a test message for editor/deleter tests (via senderOnly)
 		const result = await senderOnly.client.messaging.sendMessage({
+			signer: senderOnly.keypair,
 			groupRef: { uuid },
 			text: 'Test message for permission tests',
 		});
@@ -146,6 +147,7 @@ describe('Permission-Specific Operations', () => {
 	describe('MessagingSender Permission', () => {
 		it('user with ONLY MessagingSender can create messages', async () => {
 			const result = await senderOnly.client.messaging.sendMessage({
+				signer: senderOnly.keypair,
 				groupRef: { uuid },
 				text: 'Sender only message',
 			});
@@ -156,6 +158,7 @@ describe('Permission-Specific Operations', () => {
 		it('user without MessagingSender cannot create messages', async () => {
 			await expect(
 				readerOnly.client.messaging.sendMessage({
+					signer: readerOnly.keypair,
 					groupRef: { uuid },
 					text: 'Reader trying to send',
 				}),
@@ -168,6 +171,7 @@ describe('Permission-Specific Operations', () => {
 	describe('MessagingReader Permission', () => {
 		it('user with MessagingReader can read messages', async () => {
 			const result = await readerOnly.client.messaging.getMessages({
+				signer: readerOnly.keypair,
 				groupRef: { uuid },
 			});
 
@@ -177,6 +181,7 @@ describe('Permission-Specific Operations', () => {
 		it('user with no permissions cannot read messages', async () => {
 			await expect(
 				noPermission.client.messaging.getMessages({
+					signer: noPermission.keypair,
 					groupRef: { uuid },
 				}),
 			).rejects.toSatisfy((error: RelayerTransportError) => {
@@ -189,6 +194,7 @@ describe('Permission-Specific Operations', () => {
 		it('user with ONLY MessagingEditor cannot create messages', async () => {
 			await expect(
 				editorOnly.client.messaging.sendMessage({
+					signer: editorOnly.keypair,
 					groupRef: { uuid },
 					text: 'Editor trying to create',
 				}),
@@ -200,6 +206,7 @@ describe('Permission-Specific Operations', () => {
 		it("user with MessagingEditor cannot update others' messages", async () => {
 			await expect(
 				editorOnly.client.messaging.editMessage({
+					signer: editorOnly.keypair,
 					groupRef: { uuid },
 					messageId: testMessageId,
 					text: 'Editor hijacking message',
@@ -223,18 +230,21 @@ describe('Permission-Specific Operations', () => {
 
 			// Create a message as EditorOnly
 			const { messageId } = await editorOnly.client.messaging.sendMessage({
+				signer: editorOnly.keypair,
 				groupRef: { uuid },
 				text: 'EditorOnly message',
 			});
 
 			// Update own message
 			await editorOnly.client.messaging.editMessage({
+				signer: editorOnly.keypair,
 				groupRef: { uuid },
 				messageId,
 				text: 'EditorOnly updated their message',
 			});
 
 			const updated = await admin.client.messaging.getMessage({
+				signer: admin.keypair,
 				groupRef: { uuid },
 				messageId,
 			});
@@ -255,6 +265,7 @@ describe('Permission-Specific Operations', () => {
 		it('user with ONLY MessagingDeleter cannot create messages', async () => {
 			await expect(
 				deleterOnly.client.messaging.sendMessage({
+					signer: deleterOnly.keypair,
 					groupRef: { uuid },
 					text: 'Deleter trying to create',
 				}),
@@ -274,16 +285,19 @@ describe('Permission-Specific Operations', () => {
 			await new Promise((resolve) => setTimeout(resolve, SYNC_WAIT_TIME));
 
 			const { messageId } = await senderOnly.client.messaging.sendMessage({
+				signer: senderOnly.keypair,
 				groupRef: { uuid },
 				text: 'SenderOnly message to delete',
 			});
 
 			await senderOnly.client.messaging.deleteMessage({
+				signer: senderOnly.keypair,
 				groupRef: { uuid },
 				messageId,
 			});
 
 			const deleted = await admin.client.messaging.getMessage({
+				signer: admin.keypair,
 				groupRef: { uuid },
 				messageId,
 			});
@@ -295,6 +309,7 @@ describe('Permission-Specific Operations', () => {
 		it('user with no permissions cannot create messages', async () => {
 			await expect(
 				noPermission.client.messaging.sendMessage({
+					signer: noPermission.keypair,
 					groupRef: { uuid },
 					text: 'No permission message',
 				}),
@@ -304,6 +319,7 @@ describe('Permission-Specific Operations', () => {
 		it('user with no permissions cannot update messages', async () => {
 			await expect(
 				noPermission.client.messaging.editMessage({
+					signer: noPermission.keypair,
 					groupRef: { uuid },
 					messageId: testMessageId,
 					text: 'No permission update',
@@ -314,6 +330,7 @@ describe('Permission-Specific Operations', () => {
 		it('user with no permissions cannot delete messages', async () => {
 			await expect(
 				noPermission.client.messaging.deleteMessage({
+					signer: noPermission.keypair,
 					groupRef: { uuid },
 					messageId: testMessageId,
 				}),
@@ -345,12 +362,14 @@ describe('Permission-Specific Operations', () => {
 
 		it('user with Sender+Reader but no Editor cannot update their own message', async () => {
 			const { messageId } = await combinedUser.client.messaging.sendMessage({
+				signer: combinedUser.keypair,
 				groupRef: { uuid },
 				text: 'Combined user message',
 			});
 
 			await expect(
 				combinedUser.client.messaging.editMessage({
+					signer: combinedUser.keypair,
 					groupRef: { uuid },
 					messageId,
 					text: 'Trying to update without Editor',
@@ -362,12 +381,14 @@ describe('Permission-Specific Operations', () => {
 
 		it('user with Sender+Reader but no Deleter cannot delete their own message', async () => {
 			const { messageId } = await combinedUser.client.messaging.sendMessage({
+				signer: combinedUser.keypair,
 				groupRef: { uuid },
 				text: 'Combined user message 2',
 			});
 
 			await expect(
 				combinedUser.client.messaging.deleteMessage({
+					signer: combinedUser.keypair,
 					groupRef: { uuid },
 					messageId,
 				}),

@@ -46,7 +46,7 @@ describe('Load and Stability', () => {
 			namespaceId: messagingNamespaceId,
 			versionId: messagingVersionId,
 			keypair,
-			relayer: { relayerUrl, signer: keypair },
+			relayer: { relayerUrl },
 			seal:
 				sealServerConfigs.length > 0
 					? { serverConfigs: sealServerConfigs, verifyKeyServers: false }
@@ -94,6 +94,7 @@ describe('Load and Stability', () => {
 		it('should handle concurrent sends from multiple users', async () => {
 			const promises = users.map((user, i) =>
 				user.client.messaging.sendMessage({
+					signer: user.keypair,
 					groupRef: { uuid },
 					text: `Concurrent message from user ${i}`,
 				}),
@@ -113,6 +114,7 @@ describe('Load and Stability', () => {
 
 			for (let i = 0; i < BURST_COUNT; i++) {
 				const result = await user.client.messaging.sendMessage({
+					signer: user.keypair,
 					groupRef: { uuid },
 					text: `Burst message ${i + 1}`,
 				});
@@ -132,6 +134,7 @@ describe('Load and Stability', () => {
 
 			for (let i = 0; i < COUNT; i++) {
 				const result = await user.client.messaging.sendMessage({
+					signer: user.keypair,
 					groupRef: { uuid },
 					text: `Sequential load message ${i + 1}`,
 				});
@@ -140,6 +143,7 @@ describe('Load and Stability', () => {
 
 			// Verify all messages are retrievable
 			const all = await user.client.messaging.getMessages({
+				signer: user.keypair,
 				groupRef: { uuid },
 				limit: 100,
 			});
@@ -155,6 +159,7 @@ describe('Load and Stability', () => {
 			// Send messages concurrently with reads
 			const writePromises = Array.from({ length: 5 }, (_, i) =>
 				writer.client.messaging.sendMessage({
+					signer: writer.keypair,
 					groupRef: { uuid },
 					text: `Read/write test ${i}`,
 				}),
@@ -162,6 +167,7 @@ describe('Load and Stability', () => {
 
 			const readPromises = Array.from({ length: 3 }, () =>
 				reader.client.messaging.getMessages({
+					signer: reader.keypair,
 					groupRef: { uuid },
 					limit: 10,
 				}),

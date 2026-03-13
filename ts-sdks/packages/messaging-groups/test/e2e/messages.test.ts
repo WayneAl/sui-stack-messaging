@@ -54,6 +54,7 @@ describe('Message CRUD Operations', () => {
 	describe('sendMessage', () => {
 		it('creates a message and returns a UUID message_id', async () => {
 			const result = await group.member.client.messaging.sendMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				text: 'Hello, World!',
 			});
@@ -67,6 +68,7 @@ describe('Message CRUD Operations', () => {
 		it('rejects a non-member with EncryptionAccessDeniedError', async () => {
 			await expect(
 				group.nonMember.client.messaging.sendMessage({
+					signer: group.nonMember.keypair,
 					groupRef: { uuid: group.uuid },
 					text: 'Unauthorized message',
 				}),
@@ -77,6 +79,7 @@ describe('Message CRUD Operations', () => {
 	describe('getMessage', () => {
 		it('retrieves and decrypts the message we just created', async () => {
 			const msg = await group.member.client.messaging.getMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				messageId: createdMessageId,
 			});
@@ -94,6 +97,7 @@ describe('Message CRUD Operations', () => {
 		it('returns 404 for a non-existent message', async () => {
 			await expect(
 				group.member.client.messaging.getMessage({
+					signer: group.member.keypair,
 					groupRef: { uuid: group.uuid },
 					messageId: '00000000-0000-0000-0000-000000000000',
 				}),
@@ -107,6 +111,7 @@ describe('Message CRUD Operations', () => {
 		beforeAll(async () => {
 			for (let i = 0; i < 3; i++) {
 				await group.member.client.messaging.sendMessage({
+					signer: group.member.keypair,
 					groupRef: { uuid: group.uuid },
 					text: `Pagination test message ${i + 1}`,
 				});
@@ -115,6 +120,7 @@ describe('Message CRUD Operations', () => {
 
 		it('fetches messages with limit and hasNext', async () => {
 			const result = await group.member.client.messaging.getMessages({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				limit: 2,
 			});
@@ -126,12 +132,14 @@ describe('Message CRUD Operations', () => {
 
 		it('paginates with afterOrder (no overlap between pages)', async () => {
 			const page1 = await group.member.client.messaging.getMessages({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				limit: 2,
 			});
 			const lastOrder = page1.messages[page1.messages.length - 1].order;
 
 			const page2 = await group.member.client.messaging.getMessages({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				afterOrder: lastOrder,
 				limit: 2,
@@ -150,12 +158,14 @@ describe('Message CRUD Operations', () => {
 	describe('editMessage', () => {
 		it('updates a message and sets isEdited to true', async () => {
 			await group.member.client.messaging.editMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				messageId: createdMessageId,
 				text: 'Updated message!',
 			});
 
 			const updated = await group.member.client.messaging.getMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				messageId: createdMessageId,
 			});
@@ -168,6 +178,7 @@ describe('Message CRUD Operations', () => {
 		it('rejects update from non-member with EncryptionAccessDeniedError', async () => {
 			await expect(
 				group.nonMember.client.messaging.editMessage({
+					signer: group.nonMember.keypair,
 					groupRef: { uuid: group.uuid },
 					messageId: createdMessageId,
 					text: 'Hijacked message!',
@@ -179,11 +190,13 @@ describe('Message CRUD Operations', () => {
 	describe('deleteMessage', () => {
 		it('soft-deletes a message and sets isDeleted to true', async () => {
 			await group.member.client.messaging.deleteMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				messageId: createdMessageId,
 			});
 
 			const deleted = await group.member.client.messaging.getMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				messageId: createdMessageId,
 			});
@@ -203,6 +216,7 @@ describe('Message CRUD Operations', () => {
 			let afterOrder: number | undefined;
 			while (hasNext) {
 				const page = await group.member.client.messaging.getMessages({
+					signer: group.member.keypair,
 					groupRef: { uuid: group.uuid },
 					afterOrder,
 					limit: 100,
@@ -216,6 +230,7 @@ describe('Message CRUD Operations', () => {
 
 			const subscribePromise = (async () => {
 				for await (const msg of group.member.client.messaging.subscribe({
+					signer: group.member.keypair,
 					groupRef: { uuid: group.uuid },
 					afterOrder: lastOrder,
 					signal: controller.signal,
@@ -229,10 +244,12 @@ describe('Message CRUD Operations', () => {
 
 			await new Promise((r) => setTimeout(r, 200));
 			await group.member.client.messaging.sendMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				text: 'Subscribe test 1',
 			});
 			await group.member.client.messaging.sendMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				text: 'Subscribe test 2',
 			});
@@ -247,11 +264,13 @@ describe('Message CRUD Operations', () => {
 	describe('Admin operations', () => {
 		it('admin can send and read messages (auto-permissions from group creation)', async () => {
 			const { messageId } = await group.admin.client.messaging.sendMessage({
+				signer: group.admin.keypair,
 				groupRef: { uuid: group.uuid },
 				text: 'Admin message',
 			});
 
 			const msg = await group.admin.client.messaging.getMessage({
+				signer: group.admin.keypair,
 				groupRef: { uuid: group.uuid },
 				messageId,
 			});

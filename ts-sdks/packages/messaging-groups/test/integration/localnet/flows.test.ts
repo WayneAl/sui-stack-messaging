@@ -5,7 +5,11 @@ import { describe, it, expect, inject, beforeAll } from 'vitest';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { fromHex } from '@mysten/sui/utils';
 import { EncryptedObject } from '@mysten/seal';
-import { DefaultSealPolicy, buildMessageAad, messagingPermissionTypes } from '@mysten/messaging-groups';
+import {
+	DefaultSealPolicy,
+	buildMessageAad,
+	messagingPermissionTypes,
+} from '@mysten/messaging-groups';
 
 import {
 	createMessagingGroupsClient,
@@ -552,9 +556,7 @@ describe('Full Flows', () => {
 				permissionTypes: Object.values(messagingPermissionTypes(messagingPackageId)),
 			});
 
-			expect(await adminClient.groups.view.isMember({ groupId, member: memberAddress })).toBe(
-				true,
-			);
+			expect(await adminClient.groups.view.isMember({ groupId, member: memberAddress })).toBe(true);
 
 			// Atomic remove + rotate
 			await adminClient.messaging.removeMembersAndRotateKey({

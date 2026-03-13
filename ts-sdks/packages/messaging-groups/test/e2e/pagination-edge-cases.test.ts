@@ -52,6 +52,7 @@ describe('Pagination Edge Cases', () => {
 		// Create test messages
 		for (let i = 0; i < NUM_TEST_MESSAGES; i++) {
 			await group.member.client.messaging.sendMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				text: `Pagination test message ${i + 1}`,
 			});
@@ -59,6 +60,7 @@ describe('Pagination Edge Cases', () => {
 
 		// Fetch all messages to get their orders
 		const all = await group.member.client.messaging.getMessages({
+			signer: group.member.keypair,
 			groupRef: { uuid: group.uuid },
 			limit: 100,
 		});
@@ -70,6 +72,7 @@ describe('Pagination Edge Cases', () => {
 			const middleOrder = messageOrders[Math.floor(messageOrders.length / 2)];
 
 			const result = await group.member.client.messaging.getMessages({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				beforeOrder: middleOrder,
 				limit: 100,
@@ -84,6 +87,7 @@ describe('Pagination Edge Cases', () => {
 			const minOrder = Math.min(...messageOrders);
 
 			const result = await group.member.client.messaging.getMessages({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				beforeOrder: minOrder,
 			});
@@ -100,6 +104,7 @@ describe('Pagination Edge Cases', () => {
 			const beforeOrder = sortedOrders[sortedOrders.length - 2];
 
 			const result = await group.member.client.messaging.getMessages({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				afterOrder,
 				beforeOrder,
@@ -116,6 +121,7 @@ describe('Pagination Edge Cases', () => {
 			const order = messageOrders[5] || 100;
 
 			const result = await group.member.client.messaging.getMessages({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				afterOrder: order,
 				beforeOrder: order,
@@ -128,6 +134,7 @@ describe('Pagination Edge Cases', () => {
 	describe('Limit Edge Cases', () => {
 		it('should handle limit of 1', async () => {
 			const result = await group.member.client.messaging.getMessages({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				limit: 1,
 			});
@@ -138,6 +145,7 @@ describe('Pagination Edge Cases', () => {
 
 		it('should cap very large limit to max allowed', async () => {
 			const result = await group.member.client.messaging.getMessages({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				limit: 10000,
 			});
@@ -153,6 +161,7 @@ describe('Pagination Edge Cases', () => {
 			const futureOrder = maxOrder + 1000;
 
 			const result = await group.member.client.messaging.getMessages({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				afterOrder: futureOrder,
 			});
@@ -165,6 +174,7 @@ describe('Pagination Edge Cases', () => {
 	describe('Order Consistency', () => {
 		it('should return messages in ascending order by default', async () => {
 			const result = await group.member.client.messaging.getMessages({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				limit: 100,
 			});
@@ -183,6 +193,7 @@ describe('Pagination Edge Cases', () => {
 
 			while (pageCount < 10) {
 				const result = await group.member.client.messaging.getMessages({
+					signer: group.member.keypair,
 					groupRef: { uuid: group.uuid },
 					limit: PAGE_SIZE,
 					afterOrder,

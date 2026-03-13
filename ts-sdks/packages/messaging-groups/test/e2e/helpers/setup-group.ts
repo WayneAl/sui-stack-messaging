@@ -68,7 +68,7 @@ export async function setupTestGroup(config: GroupSetupConfig): Promise<GroupSet
 			namespaceId: config.namespaceId,
 			versionId: config.versionId,
 			keypair,
-			relayer: config.relayerUrl ? { relayerUrl: config.relayerUrl, signer: keypair } : undefined,
+			relayer: config.relayerUrl ? { relayerUrl: config.relayerUrl } : undefined,
 			seal: config.seal,
 		});
 	}

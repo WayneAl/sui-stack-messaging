@@ -32,6 +32,7 @@ async function pollUntilSyncStatus(
 
 	while (Date.now() - start < timeoutMs) {
 		const msg = await group.member.client.messaging.getMessage({
+			signer: group.member.keypair,
 			groupRef: { uuid: group.uuid },
 			messageId,
 		});
@@ -82,6 +83,7 @@ describe('Walrus Sync Lifecycle', () => {
 
 		it('should create a message with SYNC_PENDING status', async () => {
 			const result = await group.member.client.messaging.sendMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				text: 'Walrus sync test message',
 			});
@@ -89,6 +91,7 @@ describe('Walrus Sync Lifecycle', () => {
 
 			// Immediately after creation, syncStatus should be SYNC_PENDING
 			const msg = await group.member.client.messaging.getMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				messageId,
 			});
@@ -106,6 +109,7 @@ describe('Walrus Sync Lifecycle', () => {
 
 		it('should create and sync a message first', async () => {
 			const result = await group.member.client.messaging.sendMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				text: 'Before edit',
 			});
@@ -116,6 +120,7 @@ describe('Walrus Sync Lifecycle', () => {
 
 		it('should transition to UPDATED after edit and re-sync', async () => {
 			await group.member.client.messaging.editMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				messageId,
 				text: 'After edit - new content',
@@ -133,6 +138,7 @@ describe('Walrus Sync Lifecycle', () => {
 
 		it('should create and sync a message first', async () => {
 			const result = await group.member.client.messaging.sendMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				text: 'Message to be deleted',
 			});
@@ -143,6 +149,7 @@ describe('Walrus Sync Lifecycle', () => {
 
 		it('should transition to DELETED after soft-delete and sync', async () => {
 			await group.member.client.messaging.deleteMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				messageId,
 			});
@@ -165,6 +172,7 @@ describe('Walrus Sync Lifecycle', () => {
 			let afterOrder: number | undefined;
 			while (hasNext) {
 				const page = await group.member.client.messaging.getMessages({
+					signer: group.member.keypair,
 					groupRef: { uuid: group.uuid },
 					afterOrder,
 					limit: 100,
@@ -178,6 +186,7 @@ describe('Walrus Sync Lifecycle', () => {
 
 			const subscribePromise = (async () => {
 				for await (const msg of group.member.client.messaging.subscribe({
+					signer: group.member.keypair,
 					groupRef: { uuid: group.uuid },
 					afterOrder: lastOrder,
 					signal: controller.signal,
@@ -193,14 +202,17 @@ describe('Walrus Sync Lifecycle', () => {
 
 			// Send messages — these will initially be SYNC_PENDING
 			await group.member.client.messaging.sendMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				text: 'Subscribe sync test 1',
 			});
 			await group.member.client.messaging.sendMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				text: 'Subscribe sync test 2',
 			});
 			await group.member.client.messaging.sendMessage({
+				signer: group.member.keypair,
 				groupRef: { uuid: group.uuid },
 				text: 'Subscribe sync test 3',
 			});
