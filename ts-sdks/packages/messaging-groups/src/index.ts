@@ -23,6 +23,11 @@ export * from './http/index.js';
 export * from './attachments/index.js';
 export * from './recovery/index.js';
 export * from './messaging-types.js';
+export {
+	verifyMessageSender,
+	buildCanonicalMessage,
+	type VerifyMessageSenderParams,
+} from './verification.js';
 export type {
 	ParsedMessagingNamespace,
 	ParsedMessaging,

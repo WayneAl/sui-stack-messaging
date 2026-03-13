@@ -47,12 +47,10 @@ describe.skipIf(!configComplete)('HTTPRelayerTransport integration', () => {
 
 		memberTransport = new HTTPRelayerTransport({
 			relayerUrl: config.relayerUrl,
-			signer: group.memberKeypair,
 		});
 
 		nonMemberTransport = new HTTPRelayerTransport({
 			relayerUrl: config.relayerUrl,
-			signer: group.nonMemberKeypair,
 		});
 	}, 120_000);
 
@@ -62,6 +60,7 @@ describe.skipIf(!configComplete)('HTTPRelayerTransport integration', () => {
 		it('creates a message and returns a UUID message_id', async () => {
 			createdNonce = randomNonce();
 			const result = await memberTransport.sendMessage({
+				signer: group.memberKeypair,
 				groupId: group.groupId,
 				encryptedText: new Uint8Array([0xca, 0xfe]),
 				nonce: createdNonce,
@@ -78,6 +77,7 @@ describe.skipIf(!configComplete)('HTTPRelayerTransport integration', () => {
 		it('rejects a non-member with 403', async () => {
 			try {
 				await nonMemberTransport.sendMessage({
+					signer: group.nonMemberKeypair,
 					groupId: group.groupId,
 					encryptedText: new Uint8Array([1]),
 					nonce: randomNonce(),
@@ -97,6 +97,7 @@ describe.skipIf(!configComplete)('HTTPRelayerTransport integration', () => {
 	describe('fetchMessage', () => {
 		it('retrieves the message we just created with correct fields', async () => {
 			const msg = await memberTransport.fetchMessage({
+				signer: group.memberKeypair,
 				messageId: createdMessageId,
 				groupId: group.groupId,
 			});
@@ -118,6 +119,7 @@ describe.skipIf(!configComplete)('HTTPRelayerTransport integration', () => {
 		it('returns 404 for a non-existent message', async () => {
 			try {
 				await memberTransport.fetchMessage({
+					signer: group.memberKeypair,
 					messageId: '00000000-0000-0000-0000-000000000000',
 					groupId: group.groupId,
 				});
@@ -135,6 +137,7 @@ describe.skipIf(!configComplete)('HTTPRelayerTransport integration', () => {
 		beforeAll(async () => {
 			for (let i = 0; i < 3; i++) {
 				await memberTransport.sendMessage({
+					signer: group.memberKeypair,
 					groupId: group.groupId,
 					encryptedText: new Uint8Array([i + 1]),
 					nonce: randomNonce(),
@@ -145,6 +148,7 @@ describe.skipIf(!configComplete)('HTTPRelayerTransport integration', () => {
 
 		it('fetches messages with limit and hasNext', async () => {
 			const result = await memberTransport.fetchMessages({
+				signer: group.memberKeypair,
 				groupId: group.groupId,
 				limit: 2,
 			});
@@ -159,6 +163,7 @@ describe.skipIf(!configComplete)('HTTPRelayerTransport integration', () => {
 		it('paginates with afterOrder (no overlap between pages)', async () => {
 			// Get first page
 			const page1 = await memberTransport.fetchMessages({
+				signer: group.memberKeypair,
 				groupId: group.groupId,
 				limit: 2,
 			});
@@ -166,6 +171,7 @@ describe.skipIf(!configComplete)('HTTPRelayerTransport integration', () => {
 
 			// Get second page using cursor
 			const page2 = await memberTransport.fetchMessages({
+				signer: group.memberKeypair,
 				groupId: group.groupId,
 				afterOrder: lastOrder,
 				limit: 2,
@@ -190,6 +196,7 @@ describe.skipIf(!configComplete)('HTTPRelayerTransport integration', () => {
 			const updateNonce = randomNonce();
 
 			await memberTransport.updateMessage({
+				signer: group.memberKeypair,
 				messageId: createdMessageId,
 				groupId: group.groupId,
 				encryptedText: newContent,
@@ -199,6 +206,7 @@ describe.skipIf(!configComplete)('HTTPRelayerTransport integration', () => {
 
 			// Fetch back and verify
 			const updated = await memberTransport.fetchMessage({
+				signer: group.memberKeypair,
 				messageId: createdMessageId,
 				groupId: group.groupId,
 			});
@@ -212,6 +220,7 @@ describe.skipIf(!configComplete)('HTTPRelayerTransport integration', () => {
 		it('rejects update from non-member with 403', async () => {
 			try {
 				await nonMemberTransport.updateMessage({
+					signer: group.nonMemberKeypair,
 					messageId: createdMessageId,
 					groupId: group.groupId,
 					encryptedText: new Uint8Array([0xff]),
@@ -231,11 +240,13 @@ describe.skipIf(!configComplete)('HTTPRelayerTransport integration', () => {
 	describe('deleteMessage', () => {
 		it('soft-deletes a message and sets isDeleted to true', async () => {
 			await memberTransport.deleteMessage({
+				signer: group.memberKeypair,
 				messageId: createdMessageId,
 				groupId: group.groupId,
 			});
 
 			const deleted = await memberTransport.fetchMessage({
+				signer: group.memberKeypair,
 				messageId: createdMessageId,
 				groupId: group.groupId,
 			});
@@ -250,7 +261,6 @@ describe.skipIf(!configComplete)('HTTPRelayerTransport integration', () => {
 		it('receives new messages via polling', async () => {
 			const transport = new HTTPRelayerTransport({
 				relayerUrl: config.relayerUrl,
-				signer: group.memberKeypair,
 				pollingIntervalMs: 500,
 			});
 
@@ -258,6 +268,7 @@ describe.skipIf(!configComplete)('HTTPRelayerTransport integration', () => {
 			const received: string[] = [];
 
 			const existing = await transport.fetchMessages({
+				signer: group.memberKeypair,
 				groupId: group.groupId,
 				limit: 1,
 			});
@@ -269,6 +280,7 @@ describe.skipIf(!configComplete)('HTTPRelayerTransport integration', () => {
 			// Start subscribe in the background
 			const subscribePromise = (async () => {
 				for await (const msg of transport.subscribe({
+					signer: group.memberKeypair,
 					groupId: group.groupId,
 					afterOrder: lastOrder,
 					signal: controller.signal,
@@ -283,12 +295,14 @@ describe.skipIf(!configComplete)('HTTPRelayerTransport integration', () => {
 			// Send 2 messages after a small delay to give subscribe time to start
 			await new Promise((r) => setTimeout(r, 200));
 			await memberTransport.sendMessage({
+				signer: group.memberKeypair,
 				groupId: group.groupId,
 				encryptedText: new Uint8Array([0x11]),
 				nonce: randomNonce(),
 				keyVersion: 0n,
 			});
 			await memberTransport.sendMessage({
+				signer: group.memberKeypair,
 				groupId: group.groupId,
 				encryptedText: new Uint8Array([0x22]),
 				nonce: randomNonce(),

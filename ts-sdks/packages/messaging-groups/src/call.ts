@@ -3,6 +3,8 @@
 
 import type { Transaction } from '@mysten/sui/transactions';
 
+import type { PermissionedGroupsCall } from '@mysten/permissioned-groups';
+
 import type { EnvelopeEncryption } from './encryption/envelope-encryption.js';
 import * as messaging from './contracts/messaging/messaging.js';
 import type { MessagingGroupsDerive } from './derive.js';
@@ -15,6 +17,7 @@ import type {
 	LeaveCallOptions,
 	MessagingGroupsPackageConfig,
 	RemoveGroupDataCallOptions,
+	RemoveMembersAndRotateKeyCallOptions,
 	RotateEncryptionKeyCallOptions,
 	SetGroupNameCallOptions,
 	SetSuinsReverseLookupCallOptions,
@@ -33,6 +36,8 @@ export interface MessagingGroupsCallOptions {
 	encryptionHistoryTypeName: string;
 	/** SuiNS config (optional — only needed for reverse lookup operations). */
 	suinsConfig?: SuinsConfig;
+	/** PermissionedGroups call layer (needed for removeMembersAndRotateKey). */
+	groupsCall: PermissionedGroupsCall;
 }
 
 /**
@@ -58,6 +63,7 @@ export class MessagingGroupsCall {
 	#permissionedGroupTypeName: string;
 	#encryptionHistoryTypeName: string;
 	#suinsConfig?: SuinsConfig;
+	#groupsCall: PermissionedGroupsCall;
 
 	constructor(options: MessagingGroupsCallOptions) {
 		this.#packageConfig = options.packageConfig;
@@ -66,6 +72,7 @@ export class MessagingGroupsCall {
 		this.#permissionedGroupTypeName = options.permissionedGroupTypeName;
 		this.#encryptionHistoryTypeName = options.encryptionHistoryTypeName;
 		this.#suinsConfig = options.suinsConfig;
+		this.#groupsCall = options.groupsCall;
 	}
 
 	// === Group Creation Functions ===
@@ -179,6 +186,42 @@ export class MessagingGroupsCall {
 				await this.#encryption.generateRotationDEK(options);
 
 			return tx.add(
+				messaging.rotateEncryptionKey({
+					package: this.#packageConfig.latestPackageId,
+					arguments: {
+						version: this.#packageConfig.versionId,
+						encryptionHistory: encryptionHistoryId,
+						group: groupId,
+						newEncryptedDek: Array.from(encryptedDek),
+					},
+				}),
+			);
+		};
+	}
+
+	/**
+	 * Atomically removes one or more members and rotates the encryption key.
+	 *
+	 * Composes `removeMember` (from permissioned-groups) for each member and a
+	 * single `rotateEncryptionKey` into one PTB so that removed members cannot
+	 * decrypt new messages.
+	 */
+	removeMembersAndRotateKey(options: RemoveMembersAndRotateKeyCallOptions) {
+		return async (tx: Transaction) => {
+			const { groupId, encryptionHistoryId } = this.#derive.resolveGroupRef(options);
+
+			// 1. Remove each member.
+			for (const member of options.members) {
+				tx.add(this.#groupsCall.removeMember({ groupId, member }));
+			}
+
+			// 2. Generate new DEK and rotate (once).
+			const { encryptedDek } = await this.#encryption.generateRotationDEK({
+				groupId,
+				encryptionHistoryId,
+			});
+
+			tx.add(
 				messaging.rotateEncryptionKey({
 					package: this.#packageConfig.latestPackageId,
 					arguments: {

@@ -27,7 +27,6 @@ const MOCK_PERMISSIONED_GROUPS_PACKAGE_ID = '0x' + 'ff'.repeat(32);
 const MOCK_WITNESS_TYPE = `${MOCK_PERMISSIONED_GROUPS_PACKAGE_ID}::messaging::Messaging`;
 const MOCK_RELAYER_CONFIG = {
 	relayerUrl: 'http://localhost:3000',
-	signer: Ed25519Keypair.generate(),
 };
 
 const mockSealSuiClient = {} as SealCompatibleClient;

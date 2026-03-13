@@ -16,7 +16,6 @@ import type {
 	FetchMessagesParams,
 	FetchMessagesResult,
 	RelayerMessage,
-	RelayerTransportConfig,
 	SendMessageParams,
 	SendMessageResult,
 	SubscribeParams,
@@ -26,7 +25,8 @@ import type {
 import { RelayerTransportError } from './types.js';
 
 /** Configuration for the HTTP polling transport. */
-export interface HTTPRelayerTransportConfig extends RelayerTransportConfig, HttpClientConfig {
+export interface HTTPRelayerTransportConfig extends HttpClientConfig {
+	relayerUrl: string;
 	pollingIntervalMs?: number;
 }
 
@@ -53,6 +53,8 @@ interface WireMessageResponse {
 	is_deleted: boolean;
 	sync_status: string;
 	quilt_patch_id: string | null;
+	signature: string;
+	public_key: string;
 }
 
 interface WireMessagesListResponse {
@@ -106,6 +108,8 @@ function fromWireMessage(wire: WireMessageResponse): RelayerMessage {
 		isDeleted: wire.is_deleted,
 		syncStatus: wire.sync_status as SyncStatus,
 		quiltPatchId: wire.quilt_patch_id,
+		signature: wire.signature ?? '',
+		publicKey: wire.public_key ?? '',
 	};
 }
 
@@ -203,10 +207,10 @@ const DEFAULT_POLLING_INTERVAL_MS = 3000;
  * ```ts
  * const transport = new HTTPRelayerTransport({
  *   relayerUrl: 'https://relayer.example.com',
- *   signer: Ed25519Keypair.generate(),
  * });
  *
  * const { messageId } = await transport.sendMessage({
+ *   signer: keypair,
  *   groupId: '0x...',
  *   encryptedText: ciphertext,
  *   nonce: nonce,
@@ -216,7 +220,6 @@ const DEFAULT_POLLING_INTERVAL_MS = 3000;
  */
 export class HTTPRelayerTransport implements RelayerTransport {
 	readonly #relayerUrl: string;
-	readonly #signer: Signer;
 	readonly #pollingIntervalMs: number;
 	readonly #fetch: typeof globalThis.fetch;
 	readonly #timeout: number;
@@ -224,32 +227,35 @@ export class HTTPRelayerTransport implements RelayerTransport {
 	#disconnected = false;
 	#abortController = new AbortController();
 
-	/** Cache signed auth headers per groupId to avoid re-signing on every poll. */
-	readonly #headerAuthCache = new Map<string, { headers: Record<string, string>; createdAt: number }>();
+	/** Cache signed auth headers per signer+groupId to avoid re-signing on every poll. */
+	readonly #headerAuthCache = new Map<
+		string,
+		{ headers: Record<string, string>; createdAt: number }
+	>();
 	/** Reuse cached headers for 2 minutes (relayer TTL is 5 minutes). */
 	static readonly #HEADER_AUTH_CACHE_TTL_MS = 120_000;
 
 	constructor(config: HTTPRelayerTransportConfig) {
 		this.#relayerUrl = config.relayerUrl.replace(/\/+$/, '');
-		this.#signer = config.signer;
 		this.#pollingIntervalMs = config.pollingIntervalMs ?? DEFAULT_POLLING_INTERVAL_MS;
 		this.#fetch = config.fetch ?? globalThis.fetch.bind(globalThis);
 		this.#timeout = config.timeout ?? DEFAULT_HTTP_TIMEOUT;
 		this.#onError = config.onError;
 	}
 
-	async #cachedHeaderAuth(groupId: string): Promise<Record<string, string>> {
-		const cached = this.#headerAuthCache.get(groupId);
+	async #cachedHeaderAuth(signer: Signer, groupId: string): Promise<Record<string, string>> {
+		const cacheKey = `${signer.toSuiAddress()}:${groupId}`;
+		const cached = this.#headerAuthCache.get(cacheKey);
 		if (cached && Date.now() - cached.createdAt < HTTPRelayerTransport.#HEADER_AUTH_CACHE_TTL_MS) {
 			return cached.headers;
 		}
-		const headers = await createHeaderAuth(this.#signer, groupId);
-		this.#headerAuthCache.set(groupId, { headers, createdAt: Date.now() });
+		const headers = await createHeaderAuth(signer, groupId);
+		this.#headerAuthCache.set(cacheKey, { headers, createdAt: Date.now() });
 		return headers;
 	}
 
 	async sendMessage(params: SendMessageParams): Promise<SendMessageResult> {
-		const wirePayload = {
+		const wirePayload: Record<string, unknown> = {
 			group_id: params.groupId,
 			encrypted_text: toHex(params.encryptedText),
 			nonce: toHex(params.nonce),
@@ -257,7 +263,11 @@ export class HTTPRelayerTransport implements RelayerTransport {
 			attachments: params.attachments?.map(toWireAttachment) ?? [],
 		};
 
-		const { body, headers } = await createBodyAuth(this.#signer, wirePayload);
+		if (params.messageSignature) {
+			wirePayload.message_signature = params.messageSignature;
+		}
+
+		const { body, headers } = await createBodyAuth(params.signer, wirePayload);
 		const response = await this.#request<WireCreateMessageResponse>('/messages', {
 			method: 'POST',
 			headers: { ...headers, 'Content-Type': 'application/json' },
@@ -268,7 +278,7 @@ export class HTTPRelayerTransport implements RelayerTransport {
 	}
 
 	async fetchMessages(params: FetchMessagesParams): Promise<FetchMessagesResult> {
-		const headers = await this.#cachedHeaderAuth(params.groupId);
+		const headers = await this.#cachedHeaderAuth(params.signer, params.groupId);
 
 		const queryParams = new URLSearchParams({ group_id: params.groupId });
 		if (params.afterOrder !== undefined) {
@@ -293,7 +303,7 @@ export class HTTPRelayerTransport implements RelayerTransport {
 	}
 
 	async fetchMessage(params: FetchMessageParams): Promise<RelayerMessage> {
-		const headers = await this.#cachedHeaderAuth(params.groupId);
+		const headers = await this.#cachedHeaderAuth(params.signer, params.groupId);
 
 		const queryParams = new URLSearchParams({
 			message_id: params.messageId,
@@ -309,7 +319,7 @@ export class HTTPRelayerTransport implements RelayerTransport {
 	}
 
 	async updateMessage(params: UpdateMessageParams): Promise<void> {
-		const wirePayload = {
+		const wirePayload: Record<string, unknown> = {
 			message_id: params.messageId,
 			group_id: params.groupId,
 			encrypted_text: toHex(params.encryptedText),
@@ -318,7 +328,11 @@ export class HTTPRelayerTransport implements RelayerTransport {
 			attachments: params.attachments?.map(toWireAttachment) ?? [],
 		};
 
-		const { body, headers } = await createBodyAuth(this.#signer, wirePayload);
+		if (params.messageSignature) {
+			wirePayload.message_signature = params.messageSignature;
+		}
+
+		const { body, headers } = await createBodyAuth(params.signer, wirePayload);
 		await this.#request('/messages', {
 			method: 'PUT',
 			headers: { ...headers, 'Content-Type': 'application/json' },
@@ -327,7 +341,7 @@ export class HTTPRelayerTransport implements RelayerTransport {
 	}
 
 	async deleteMessage(params: DeleteMessageParams): Promise<void> {
-		const headers = await this.#cachedHeaderAuth(params.groupId);
+		const headers = await this.#cachedHeaderAuth(params.signer, params.groupId);
 
 		await this.#request(`/messages/${params.messageId}`, {
 			method: 'DELETE',
@@ -341,6 +355,7 @@ export class HTTPRelayerTransport implements RelayerTransport {
 		while (!this.#disconnected && !params.signal?.aborted) {
 			try {
 				const result = await this.fetchMessages({
+					signer: params.signer,
 					groupId: params.groupId,
 					afterOrder: lastOrder,
 					limit: params.limit,

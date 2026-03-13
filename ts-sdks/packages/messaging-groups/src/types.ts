@@ -198,6 +198,17 @@ export interface LeaveOptions extends LeaveCallOptions {
 	signer: Signer;
 }
 
+/** Options for atomically removing members and rotating the encryption key (call-level). */
+export type RemoveMembersAndRotateKeyCallOptions = GroupRef & {
+	/** Addresses of the members to remove. */
+	members: string[];
+};
+
+/** Options for removeMembersAndRotateKey (imperative, with signer). */
+export type RemoveMembersAndRotateKeyOptions = RemoveMembersAndRotateKeyCallOptions & {
+	signer: Signer;
+};
+
 /** Options for archiving a group (call-level, no signer). */
 export interface ArchiveGroupCallOptions {
 	/** Object ID of the PermissionedGroup<Messaging> */
