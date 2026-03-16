@@ -74,7 +74,8 @@ impl WalrusClient {
 
         // Add per-patch metadata (tags) as a _metadata JSON form part
         if let Some(meta) = metadata {
-            let meta_json = serde_json::to_string(&meta).map_err(|e| WalrusError::ParseError(e.to_string()))?;
+            let meta_json =
+                serde_json::to_string(&meta).map_err(|e| WalrusError::ParseError(e.to_string()))?;
             form = form.part("_metadata", Part::text(meta_json));
         }
 
