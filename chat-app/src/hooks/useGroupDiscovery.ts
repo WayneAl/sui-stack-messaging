@@ -25,7 +25,7 @@ import {
 
 const DISCOVER_GROUPS_QUERY = `
   query DiscoverGroups($eventType: String!, $cursor: String) {
-    events(filter: { eventType: $eventType }, first: 50, after: $cursor) {
+    events(filter: { type: $eventType }, first: 50, after: $cursor) {
       pageInfo {
         hasNextPage
         endCursor
@@ -170,11 +170,14 @@ export function useGroupDiscovery(
         const stored = getStoredGroups();
         const storedByGroupId = new Map(stored.map((g) => [g.groupId, g]));
 
+        // Reconstruct group UUID from
+        const metadatas = await client!.messaging.view.groupsMetadata({ groupIds: activeGroupIds, refresh: true });
+
         for (const groupId of activeGroupIds) {
           if (!storedByGroupId.has(groupId)) {
             addStoredGroup({
-              uuid: '', // UUID unknown for groups discovered via events
-              name: `Group ${groupId.slice(0, 8)}...`,
+              uuid: metadatas[groupId].uuid,
+              name: metadatas[groupId].name,
               groupId,
               createdAt: Date.now(),
             });

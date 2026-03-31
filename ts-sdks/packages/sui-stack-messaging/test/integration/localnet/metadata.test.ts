@@ -114,7 +114,7 @@ describe('metadata', () => {
 		});
 	});
 
-	describe('groupMetadata', () => {
+	describe('groupsMetadata', () => {
 		it('should fetch metadata for a newly created group', async () => {
 			const uuid = crypto.randomUUID();
 			const name = 'Metadata View Test';
@@ -126,7 +126,8 @@ describe('metadata', () => {
 			});
 
 			const groupId = adminClient.messaging.derive.groupId({ uuid });
-			const metadata = await adminClient.messaging.view.groupMetadata({ groupId });
+			const metadatas = await adminClient.messaging.view.groupsMetadata({ groupIds: [groupId] });
+			const metadata = metadatas[groupId];
 
 			expect(metadata.name).toBe(name);
 			expect(metadata.uuid).toBe(uuid);
@@ -145,8 +146,8 @@ describe('metadata', () => {
 			const groupId = adminClient.messaging.derive.groupId({ uuid });
 
 			// Populate the cache with 'Before'
-			const initial = await adminClient.messaging.view.groupMetadata({ groupId });
-			expect(initial.name).toBe('Before');
+			const initialResult = await adminClient.messaging.view.groupsMetadata({ groupIds: [groupId] });
+			expect(initialResult[groupId].name).toBe('Before');
 
 			// Mutate on-chain
 			await adminClient.messaging.setGroupName({
@@ -156,15 +157,15 @@ describe('metadata', () => {
 			});
 
 			// Cached value should still be 'Before'
-			const cached = await adminClient.messaging.view.groupMetadata({ groupId });
-			expect(cached.name).toBe('Before');
+			const cachedResult = await adminClient.messaging.view.groupsMetadata({ groupIds: [groupId] });
+			expect(cachedResult[groupId].name).toBe('Before');
 
 			// Refresh should return 'After'
-			const refreshed = await adminClient.messaging.view.groupMetadata({
-				groupId,
+			const refreshedResult = await adminClient.messaging.view.groupsMetadata({
+				groupIds: [groupId],
 				refresh: true,
 			});
-			expect(refreshed.name).toBe('After');
+			expect(refreshedResult[groupId].name).toBe('After');
 		});
 	});
 

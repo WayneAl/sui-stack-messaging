@@ -27,7 +27,7 @@ export function getStoredGroups(): StoredGroup[] {
 
 /** Add a group to localStorage (deduplicates by uuid). */
 export function addStoredGroup(group: StoredGroup): void {
-  const groups = getStoredGroups().filter((g) => g.uuid !== group.uuid);
+  const groups = getStoredGroups();
   groups.push(group);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(groups));
 }
