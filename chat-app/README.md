@@ -17,7 +17,7 @@ A fully functional chat application built on the Sui Groups SDK ecosystem, showc
 - **End-to-end encrypted group messaging** — Messages are encrypted client-side using AES-256-GCM with keys managed via [Seal](https://docs.seal.mystenlabs.com) threshold encryption. Neither the relayer nor any intermediary ever sees plaintext.
 - **On-chain permission management** — Group membership and fine-grained permissions (send, read, edit, delete, admin) are enforced on-chain via `@mysten/sui-groups`, with the relayer and Seal key servers independently verifying permissions.
 - **Atomic multi-step transactions** — The SDK's `call` layer composes multiple on-chain operations (e.g., remove member + rotate encryption key) into a single Programmable Transaction Block (PTB), guaranteeing atomicity.
-- **Encrypted file attachments via Walrus** — Files are encrypted with the group's DEK and stored on [Walrus](https://docs.walrus.site) decentralized storage. Metadata (filename, MIME type, size) is encrypted separately.
+- **Encrypted file attachments via Walrus** — Files are encrypted with the group's DEK and stored on [Walrus](https://docs.wal.app) decentralized storage. Metadata (filename, MIME type, size) is encrypted separately.
 - **Wallet-based authentication** — No usernames or passwords. Users authenticate with their Sui wallet via `@mysten/dapp-kit`.
 - **Real-time message delivery** — New messages appear automatically via HTTP polling with the SDK's `subscribe()` API.
 
@@ -185,5 +185,5 @@ The app follows a 3-layer architecture:
 | System Design doc    | [SYSTEM_DESIGN.md](./docs/SYSTEM_DESIGN.md)                                                                               |
 | @mysten/dapp-kit     | https://sdk.mystenlabs.com/dapp-kit                                                                                       |
 | Sui TypeScript SDK   | https://sdk.mystenlabs.com/typescript                                                                                     |
-| Walrus Documentation | https://docs.walrus.site                                                                                                  |
+| Walrus Documentation | https://docs.wal.app                                                                                                  |
 | Seal Documentation   | https://docs.seal.mystenlabs.com                                                                                          |

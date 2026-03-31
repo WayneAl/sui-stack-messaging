@@ -1,7 +1,7 @@
 # Recovery Transport — Reference Implementation
 
 This is a **reference implementation** of a read-only recovery transport that uses the
-[Discovery Indexer](https://github.com/MystenLabs/messaging-sdk-relayer/tree/main/walrus-discovery-indexer)
+[Discovery Indexer](../../../../walrus-discovery-indexer/)
 and the Walrus aggregator to recover messages when the message backend is unavailable.
 
 ## How It Works

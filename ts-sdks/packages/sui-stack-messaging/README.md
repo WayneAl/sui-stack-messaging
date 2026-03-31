@@ -1,7 +1,7 @@
 # @mysten/sui-stack-messaging
 
 TypeScript SDK for encrypted group messaging on Sui, powered by
-[Seal](https://github.com/AgiMaulana/seal) for end-to-end encryption.
+[Seal](https://github.com/MystenLabs/seal) for end-to-end encryption.
 
 ## Installation
 
@@ -19,12 +19,11 @@ peer-to-peer, etc.).
 We provide two **reference implementations**:
 
 - **`HTTPRelayerTransport`** — Built-in transport that works with the
-  [reference relayer](https://github.com/MystenLabs/messaging-sdk-relayer). Ships with the SDK.
-- **`WalrusRecoveryTransport`** — Read-only recovery adapter that fetches messages from Walrus
-  storage via the
-  [Discovery Indexer](https://github.com/MystenLabs/messaging-sdk-relayer/tree/main/walrus-discovery-indexer).
-  Implements `RecoveryTransport`. See
-  [`examples/recovery-transport/`](./examples/recovery-transport/).
+  [reference relayer](../../relayer/). Ships with the SDK.
+- **`WalrusRecoveryTransport`** (example) — Read-only recovery adapter that fetches messages from
+  Walrus storage via the [Discovery Indexer](../../walrus-discovery-indexer/). Implements
+  `RecoveryTransport`. Not part of the SDK — see
+  [`examples/recovery-transport/`](./examples/recovery-transport/) for a reference implementation.
 
 Neither is required — you can build your own transport from scratch.
 
@@ -32,24 +31,37 @@ Neither is required — you can build your own transport from scratch.
 
 ### With the reference relayer (built-in HTTP transport)
 
+The SDK uses Sui's client extension pattern. Chain `$extend()` to compose `suiGroups`, a Seal
+extension, and `suiStackMessaging`:
+
 ```ts
+import { SuiGrpcClient } from '@mysten/sui/grpc';
+import { suiGroups } from '@mysten/sui-groups';
 import { suiStackMessaging } from '@mysten/sui-stack-messaging';
 
-const client = suiStackMessaging({
-	relayerUrl: 'https://relayer.example.com',
-	signer: keypair,
-	sealClient,
-	suiClient,
-	packageId: '0x...',
-});
+const client = new SuiGrpcClient({ network: 'testnet' })
+	.$extend(
+		suiGroups({ witnessType: `${pkg}::messaging::Messaging` }),
+		seal({ sealKeyServers }), // from @mysten/seal
+	)
+	.$extend(
+		suiStackMessaging({
+			encryption: { sessionKey: { ttlMin: 10, signer: keypair } },
+			relayer: { relayerUrl: 'https://relayer.example.com' },
+		}),
+	);
 
-await client.sendMessage({
-	groupRef: { groupId: '0x...' },
+// Send a message
+await client.messaging.sendMessage({
+	signer: keypair,
+	groupRef: { uuid: 'my-group' },
 	text: 'Hello, group!',
 });
 
-const { messages } = await client.getMessages({
-	groupRef: { groupId: '0x...' },
+// Fetch and decrypt messages
+const { messages } = await client.messaging.getMessages({
+	signer: keypair,
+	groupRef: { uuid: 'my-group' },
 });
 ```
 
@@ -64,17 +76,18 @@ class MyTransport implements RelayerTransport {
 	// Connect to whatever backend you want.
 }
 
-const client = suiStackMessaging({
-	transport: new MyTransport(),
-	sealClient,
-	suiClient,
-	packageId: '0x...',
-});
+// Use { transport: ... } instead of { relayerUrl: ... }
+const client = baseClient.$extend(
+	suiStackMessaging({
+		encryption: { sessionKey: { ttlMin: 10, signer: keypair } },
+		relayer: { transport: new MyTransport() },
+	}),
+);
 ```
 
 ## Recovery from Walrus
 
-If your message backend persists messages to [Walrus](https://docs.walrus.site/) (as the reference
+If your message backend persists messages to [Walrus](https://docs.wal.app/) (as the reference
 relayer does), the SDK provides utilities to read them back directly — useful when the backend is
 unavailable and you need to restore conversation history.
 
@@ -110,21 +123,20 @@ To restore full conversation history from Walrus, implement `RecoveryTransport` 
 4. Returns them sorted by order
 
 See [`examples/recovery-transport/`](./examples/recovery-transport/) for a complete reference
-implementation using the
-[Discovery Indexer](https://github.com/MystenLabs/messaging-sdk-relayer/tree/main/walrus-discovery-indexer).
+implementation using the [Discovery Indexer](../../walrus-discovery-indexer/).
 
 ## API Reference
 
 ### Client Methods
 
-| Method                | Description                                 |
-| --------------------- | ------------------------------------------- |
-| `sendMessage()`       | Encrypt and send a message to a group       |
-| `getMessages()`       | Fetch and decrypt messages for a group      |
-| `getMessage()`        | Fetch and decrypt a single message          |
-| `updateMessage()`     | Re-encrypt and update an existing message   |
-| `deleteMessage()`     | Soft-delete a message                       |
-| `subscribeMessages()` | Subscribe to real-time messages (decrypted) |
+| Method            | Description                                 |
+| ----------------- | ------------------------------------------- |
+| `sendMessage()`   | Encrypt and send a message to a group       |
+| `getMessages()`   | Fetch and decrypt messages for a group      |
+| `getMessage()`    | Fetch and decrypt a single message          |
+| `editMessage()`   | Re-encrypt and update an existing message   |
+| `deleteMessage()` | Soft-delete a message                       |
+| `subscribe()`     | Subscribe to real-time messages (decrypted) |
 
 ### Transport Interface (`RelayerTransport`)
 
