@@ -17,6 +17,9 @@ permissions:
 jobs:
   version:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ts-sdks
     steps:
       - name: checkout code repository
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # Pin v4.1.1
@@ -33,13 +36,32 @@ jobs:
           cache-dependency-path: ts-sdks/pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-        working-directory: ts-sdks
-      - name: Create Release Pull Request or Publish Latest Version
-        uses: changesets/action@v1.5.3
+      - name: Check for pending changesets
+        id: changesets
+        run: |
+          STATUS=$(pnpm changeset status --output /tmp/changeset-status.json 2>&1 || true)
+          if echo "$STATUS" | grep -q "No changesets present"; then
+            echo "pending=false" >> $GITHUB_OUTPUT
+          else
+            echo "pending=true" >> $GITHUB_OUTPUT
+          fi
+      - name: Version packages
+        if: steps.changesets.outputs.pending == 'true'
+        run: |
+          pnpm changeset-version
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Create Release Pull Request
+        if: steps.changesets.outputs.pending == 'true'
+        uses: peter-evans/create-pull-request@v7
         with:
-          version: pnpm changeset-version
-          publish: pnpm release
-          cwd: ts-sdks
+          title: 'Version Packages'
+          commit-message: 'Version Packages'
+          branch: changeset-release/main
+          body: |
+            This PR was opened by the Changesets workflow. When you're ready to release, merge this PR.
+      - name: Publish to npm
+        if: steps.changesets.outputs.pending == 'false'
+        run: pnpm release
         env:
-          NPM_TOKEN: '' # https://github.com/changesets/changesets/issues/1152#issuecomment-3190884868
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ''
