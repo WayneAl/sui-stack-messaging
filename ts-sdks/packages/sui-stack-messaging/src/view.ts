@@ -126,27 +126,47 @@ export class SuiStackMessagingView {
 	}
 
 	/**
-	 * Returns the group's metadata (name, uuid, creator, data).
+	 * Returns multiple group's metadata (name, uuid, creator, data).
 	 *
 	 * Results are cached since metadata changes infrequently and has no
 	 * security implications. Use `{ refresh: true }` to bypass the cache.
 	 *
-	 * @param options.groupId - Object ID of the PermissionedGroup<Messaging>
+	 * @param options.groupIds - Object IDs of the PermissionedGroup<Messaging>
 	 * @param options.refresh - When true, bypasses the cache and fetches fresh data
 	 * @returns The parsed Metadata struct
 	 */
-	async groupMetadata(options: { groupId: string; refresh?: boolean }): Promise<ParsedMetadata> {
+	async groupsMetadata(options: {
+		groupIds: string[];
+		refresh?: boolean;
+	}): Promise<Record<string, ParsedMetadata>> {
+		const result: Record<string, ParsedMetadata> = {};
+		let idsToFetch: string[];
+
 		if (!options.refresh) {
-			const cached = this.#metadataCache.get(options.groupId);
-			if (cached) return cached;
+			idsToFetch = [];
+			for (const groupId of options.groupIds) {
+				const cached = this.#metadataCache.get(groupId);
+				if (cached) {
+					result[groupId] = cached;
+				} else {
+					idsToFetch.push(groupId);
+				}
+			}
+		} else {
+			idsToFetch = options.groupIds;
 		}
+
+		if (idsToFetch.length === 0) return result;
 
 		const keyType = metadataKeyType(this.#packageConfig.originalPackageId);
 		const keyBytes = bcs.u64().serialize(METADATA_SCHEMA_VERSION).toBytes();
-		const dynamicFieldId = deriveDynamicFieldID(options.groupId, keyType, keyBytes);
 
-		const { object } = await this.#client.core.getObject({
-			objectId: dynamicFieldId,
+		const dynamicFieldIds = idsToFetch.map((groupId) =>
+			deriveDynamicFieldID(groupId, keyType, keyBytes),
+		);
+
+		const { objects: metadataObjects } = await this.#client.core.getObjects({
+			objectIds: dynamicFieldIds,
 			include: { content: true },
 		});
 
@@ -156,9 +176,16 @@ export class SuiStackMessagingView {
 			value: this.#bcs.Metadata,
 		});
 
-		const parsed = MetadataField.parse(object.content);
-		this.#metadataCache.set(options.groupId, parsed.value);
-		return parsed.value;
+		for (const obj of metadataObjects) {
+			if (obj instanceof Error) continue;
+
+			const parsed = MetadataField.parse(obj.content);
+			const groupId = this.#derive.groupId({ uuid: parsed.value.uuid });
+			this.#metadataCache.set(groupId, parsed.value);
+			result[groupId] = parsed.value;
+		}
+
+		return result;
 	}
 
 	// === Private Helpers ===
