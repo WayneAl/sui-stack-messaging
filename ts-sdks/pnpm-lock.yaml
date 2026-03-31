@@ -65,8 +65,8 @@ importers:
   ../publish:
     dependencies:
       '@mysten/sui':
-        specifier: ^2.6.0
-        version: 2.6.0(typescript@5.9.3)
+        specifier: ^2.13.2
+        version: 2.13.2(typescript@5.9.3)
       zod:
         specifier: ^4.2.1
         version: 4.3.6
@@ -552,9 +552,6 @@ packages:
     resolution: {integrity: sha512-0FOIepYR4ugPYaHwK7hDeHDkfPOBVvayt9QpvRbi2LT/h2b0GaE/gM9Gag7fsnyYyNaTZ2IGyOuVg07IYepvYQ==}
     engines: {node: '>=20.0.0'}
 
-  '@mysten/bcs@2.0.2':
-    resolution: {integrity: sha512-c/nVRPJEV1fRZdKXhysVsy/yCPdiFt7jn6A4/7W2LH1ZPSVPzRkxtLY362D0zaLuBnyT5Y9d9nFLm3ixI8Goug==}
-
   '@mysten/bcs@2.0.3':
     resolution: {integrity: sha512-dwcaL4HNAsEGpU3hKUAsXgCZp9l6++e2A3THpzoYZ8e7bsy4XH1V0dXD5dIzgNcVZiZfb6ZnDMG+gdF6+1WOQA==}
 
@@ -569,10 +566,6 @@ packages:
 
   '@mysten/sui@2.13.2':
     resolution: {integrity: sha512-M/H2CZJQyLyi0vvCJZ6rRzItJCsnh66v1OTI2VoBad2lau/BTuUKOEPjRpfU4YlVJcGR4h+RLCjDXV4ACuRKSA==}
-    engines: {node: '>=22'}
-
-  '@mysten/sui@2.6.0':
-    resolution: {integrity: sha512-Dp3z7mDuUCXGgldQ3/AtC1iDiK48XTuAi//fPrHdxEaMl+f5VLjbYtB+mlKNC1SVYLKOUjTeF/RA9qfEBY++pA==}
     engines: {node: '>=22'}
 
   '@mysten/utils@0.3.1':
@@ -2834,11 +2827,6 @@ snapshots:
       js-yaml: 4.1.1
       tinyglobby: 0.2.15
 
-  '@mysten/bcs@2.0.2':
-    dependencies:
-      '@mysten/utils': 0.3.1
-      '@scure/base': 2.0.0
-
   '@mysten/bcs@2.0.3':
     dependencies:
       '@mysten/utils': 0.3.1
@@ -2871,28 +2859,6 @@ snapshots:
     dependencies:
       '@graphql-typed-document-node/core': 3.2.0(graphql@16.12.0)
       '@mysten/bcs': 2.0.3
-      '@mysten/utils': 0.3.1
-      '@noble/curves': 2.0.1
-      '@noble/hashes': 2.0.1
-      '@protobuf-ts/grpcweb-transport': 2.11.1
-      '@protobuf-ts/runtime': 2.11.1
-      '@protobuf-ts/runtime-rpc': 2.11.1
-      '@scure/base': 2.0.0
-      '@scure/bip32': 2.0.1
-      '@scure/bip39': 2.0.1
-      gql.tada: 1.9.0(graphql@16.12.0)(typescript@5.9.3)
-      graphql: 16.12.0
-      poseidon-lite: 0.2.1
-      valibot: 1.2.0(typescript@5.9.3)
-    transitivePeerDependencies:
-      - '@gql.tada/svelte-support'
-      - '@gql.tada/vue-support'
-      - typescript
-
-  '@mysten/sui@2.6.0(typescript@5.9.3)':
-    dependencies:
-      '@graphql-typed-document-node/core': 3.2.0(graphql@16.12.0)
-      '@mysten/bcs': 2.0.2
       '@mysten/utils': 0.3.1
       '@noble/curves': 2.0.1
       '@noble/hashes': 2.0.1
