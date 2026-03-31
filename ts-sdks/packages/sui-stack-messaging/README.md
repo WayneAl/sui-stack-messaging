@@ -19,10 +19,11 @@ peer-to-peer, etc.).
 We provide two **reference implementations**:
 
 - **`HTTPRelayerTransport`** — Built-in transport that works with the
-  [reference relayer](../../relayer/). Ships with the SDK.
+  [reference relayer](https://github.com/MystenLabs/messaging-sdk-relayer). Ships with the SDK.
 - **`WalrusRecoveryTransport`** (example) — Read-only recovery adapter that fetches messages from
-  Walrus storage via the [Discovery Indexer](../../walrus-discovery-indexer/). Implements
-  `RecoveryTransport`. Not part of the SDK — see
+  Walrus storage via the
+  [Discovery Indexer](https://github.com/MystenLabs/messaging-sdk-relayer/tree/main/walrus-discovery-indexer).
+  Implements `RecoveryTransport`. Not part of the SDK — see
   [`examples/recovery-transport/`](./examples/recovery-transport/) for a reference implementation.
 
 Neither is required — you can build your own transport from scratch.
@@ -87,7 +88,7 @@ const client = baseClient.$extend(
 
 ## Recovery from Walrus
 
-If your message backend persists messages to [Walrus](https://docs.wal.app/) (as the reference
+If your message backend persists messages to [Walrus](https://docs.walrus.site/) (as the reference
 relayer does), the SDK provides utilities to read them back directly — useful when the backend is
 unavailable and you need to restore conversation history.
 
@@ -123,7 +124,8 @@ To restore full conversation history from Walrus, implement `RecoveryTransport` 
 4. Returns them sorted by order
 
 See [`examples/recovery-transport/`](./examples/recovery-transport/) for a complete reference
-implementation using the [Discovery Indexer](../../walrus-discovery-indexer/).
+implementation using the
+[Discovery Indexer](https://github.com/MystenLabs/messaging-sdk-relayer/tree/main/walrus-discovery-indexer).
 
 ## API Reference
 
