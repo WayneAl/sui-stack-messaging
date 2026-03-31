@@ -39,11 +39,14 @@ jobs:
       - name: Check for pending changesets
         id: changesets
         run: |
-          STATUS=$(pnpm changeset status 2>&1 || true)
-          if echo "$STATUS" | grep -q "No changesets present"; then
-            echo "pending=false" >> $GITHUB_OUTPUT
-          else
+          # Check if there are any changeset files (excluding README.md and config.json)
+          CHANGESET_COUNT=$(find .changeset -name "*.md" ! -name "README.md" 2>/dev/null | wc -l)
+          if [ "$CHANGESET_COUNT" -gt 0 ]; then
             echo "pending=true" >> $GITHUB_OUTPUT
+            echo "Found $CHANGESET_COUNT pending changeset(s)"
+          else
+            echo "pending=false" >> $GITHUB_OUTPUT
+            echo "No pending changesets"
           fi
       - name: Check if version needs publishing
         if: steps.changesets.outputs.pending == 'false'
