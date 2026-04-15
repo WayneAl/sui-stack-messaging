@@ -39,13 +39,11 @@ export function CreateGroupModal({
     try {
       const uuid = crypto.randomUUID();
 
-      // Parse optional initial member addresses
       const initialMembers = members
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean);
 
-      // Build the transaction via the SDK's tx layer
       const tx = client.messaging.tx.createAndShareGroup({
         uuid,
         name: trimmedName,
@@ -54,10 +52,8 @@ export function CreateGroupModal({
 
       await signAndExecute({ transaction: tx });
 
-      // Derive the on-chain groupId from the UUID
       const groupId = client.messaging.derive.groupId({ uuid });
 
-      // Persist to localStorage
       addStoredGroup({
         uuid,
         name: trimmedName,
@@ -65,7 +61,6 @@ export function CreateGroupModal({
         createdAt: Date.now(),
       });
 
-      // Reset form
       setName('');
       setMembers('');
       onGroupCreated(uuid);
@@ -79,20 +74,27 @@ export function CreateGroupModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl dark:bg-secondary-800">
-        <h2 className="mb-4 text-lg font-semibold text-secondary-900 dark:text-secondary-100">
-          Create Group
-        </h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="w-full max-w-md bg-surface-container rounded-2xl p-6 shadow-[0_20px_40px_rgba(211,251,255,0.06)]">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-9 h-9 droplet-gradient rounded-xl flex items-center justify-center shrink-0">
+            <span className="material-symbols-outlined text-on-primary-fixed text-base" style={{ fontVariationSettings: "'FILL' 1" }}>
+              group_add
+            </span>
+          </div>
+          <h2 className="font-headline text-lg font-bold text-on-surface">
+            Create Group
+          </h2>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Group name */}
           <div>
             <label
               htmlFor="group-name"
-              className="mb-1 block text-sm font-medium text-secondary-700 dark:text-secondary-300"
+              className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-on-surface-variant"
             >
-              Group Name <span className="text-danger-500">*</span>
+              Group Name <span className="text-error normal-case tracking-normal">*</span>
             </label>
             <input
               id="group-name"
@@ -101,7 +103,7 @@ export function CreateGroupModal({
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Project Alpha"
               disabled={loading}
-              className="w-full rounded-lg border border-secondary-300 bg-white px-3 py-2 text-sm text-secondary-900 placeholder:text-secondary-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 disabled:opacity-50 dark:border-secondary-600 dark:bg-secondary-700 dark:text-secondary-100 dark:placeholder:text-secondary-500"
+              className="w-full rounded-xl bg-surface-container-low border-none px-4 py-2.5 text-sm text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary/40 disabled:opacity-50"
             />
           </div>
 
@@ -109,10 +111,10 @@ export function CreateGroupModal({
           <div>
             <label
               htmlFor="initial-members"
-              className="mb-1 block text-sm font-medium text-secondary-700 dark:text-secondary-300"
+              className="mb-1.5 block text-xs font-bold uppercase tracking-widest text-on-surface-variant"
             >
               Initial Members{' '}
-              <span className="text-secondary-400 dark:text-secondary-500">
+              <span className="normal-case tracking-normal font-normal text-on-surface-variant/50">
                 (optional)
               </span>
             </label>
@@ -123,13 +125,13 @@ export function CreateGroupModal({
               placeholder="Comma-separated Sui addresses&#10;0xabc..., 0xdef..."
               rows={3}
               disabled={loading}
-              className="w-full rounded-lg border border-secondary-300 bg-white px-3 py-2 text-sm text-secondary-900 placeholder:text-secondary-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 disabled:opacity-50 dark:border-secondary-600 dark:bg-secondary-700 dark:text-secondary-100 dark:placeholder:text-secondary-500"
+              className="w-full rounded-xl bg-surface-container-low border-none px-4 py-2.5 text-sm text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary/40 disabled:opacity-50 resize-none"
             />
           </div>
 
           {/* Error */}
           {error && (
-            <p className="text-sm text-danger-500">{error}</p>
+            <p className="text-sm text-error">{error}</p>
           )}
 
           {/* Buttons */}
@@ -138,14 +140,14 @@ export function CreateGroupModal({
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="rounded-lg px-4 py-2 text-sm font-medium text-secondary-600 hover:bg-secondary-100 disabled:opacity-50 dark:text-secondary-400 dark:hover:bg-secondary-700"
+              className="rounded-full px-5 py-2 text-sm font-medium text-on-surface-variant hover:bg-surface-container-high disabled:opacity-50 transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600 disabled:opacity-50"
+              className="rounded-full droplet-gradient px-5 py-2 text-sm font-bold text-on-primary-fixed disabled:opacity-50 transition-transform active:scale-95 shadow-lg"
             >
               {loading ? 'Creating...' : 'Create Group'}
             </button>

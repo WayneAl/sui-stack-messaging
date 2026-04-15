@@ -53,25 +53,25 @@ export function MemberItem({
   onTogglePermission,
 }: Readonly<MemberItemProps>) {
   return (
-    <li className="rounded-lg border border-secondary-100 p-2 dark:border-secondary-600">
+    <li className="rounded-xl bg-surface-container-high border border-outline-variant/10 p-3">
       <div className="flex items-center justify-between">
         <button
           onClick={onToggleExpand}
-          className="font-mono text-xs text-secondary-700 hover:text-primary-500 dark:text-secondary-300"
+          className="font-mono text-xs text-on-surface hover:text-primary transition-colors flex items-center gap-1"
         >
           {truncateAddress(address)}
-          {isSelf && <span className="ml-1 text-primary-500">(you)</span>}
-          <span className="ml-1 text-secondary-300">
-            {isExpanded ? '▾' : '▸'}
+          {isSelf && <span className="ml-1 text-secondary-container font-sans font-medium">(you)</span>}
+          <span className="material-symbols-outlined text-on-surface-variant" style={{ fontSize: '14px' }}>
+            {isExpanded ? 'expand_less' : 'expand_more'}
           </span>
         </button>
 
         {isAdmin && !isSelf && (
-          <div className="flex gap-1">
+          <div className="flex gap-1.5">
             <button
               onClick={() => onRemoveAndRotate(address)}
               disabled={removingMember === address}
-              className="text-[10px] text-danger-500 hover:text-danger-600 disabled:opacity-50"
+              className="text-[10px] text-error hover:text-error/80 disabled:opacity-50 transition-colors"
               title="Remove member and rotate encryption key"
             >
               {removingMember === address ? '...' : 'Remove+Key'}
@@ -79,7 +79,7 @@ export function MemberItem({
             <button
               onClick={() => onRemoveMember(address)}
               disabled={removingMember === address}
-              className="text-[10px] text-danger-400 hover:text-danger-500 disabled:opacity-50"
+              className="text-[10px] text-error/70 hover:text-error disabled:opacity-50 transition-colors"
               title="Remove member (no key rotation)"
             >
               Remove
@@ -90,11 +90,11 @@ export function MemberItem({
 
       {/* Permission badges (collapsed view) */}
       {!isExpanded && (
-        <div className="mt-1 flex flex-wrap gap-1">
+        <div className="mt-2 flex flex-wrap gap-1">
           {permissions.map((p) => (
             <span
               key={p}
-              className="rounded-full bg-secondary-100 px-2 py-0.5 text-[10px] font-medium text-secondary-600 dark:bg-secondary-600 dark:text-secondary-300"
+              className="rounded-full bg-surface-container-highest px-2 py-0.5 text-[10px] font-medium text-on-surface-variant"
             >
               {permissionLabel(p)}
             </span>
@@ -102,9 +102,9 @@ export function MemberItem({
         </div>
       )}
 
-      {/* Permission toggles (expanded view, admin + not self) */}
+      {/* Permission toggles (expanded, admin + not self) */}
       {isExpanded && isAdmin && !isSelf && (
-        <div className="mt-2 space-y-1 border-t border-secondary-100 pt-2 dark:border-secondary-600">
+        <div className="mt-2 space-y-1.5 border-t border-outline-variant/10 pt-2">
           {messagingPermTypes.map((perm) => {
             const has = permissions.some(
               (p) =>
@@ -115,16 +115,16 @@ export function MemberItem({
             return (
               <label
                 key={perm.key}
-                className="flex items-center justify-between text-xs text-secondary-600 dark:text-secondary-400"
+                className="flex items-center justify-between text-xs text-on-surface-variant"
               >
                 <span>{perm.key}</span>
                 <button
                   onClick={() => onTogglePermission(address, perm.value, has)}
                   disabled={togglingPerm === toggleKey}
-                  className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors disabled:opacity-50 ${
+                  className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold transition-colors disabled:opacity-50 ${
                     has
-                      ? 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400'
-                      : 'bg-secondary-100 text-secondary-500 hover:bg-secondary-200 dark:bg-secondary-600 dark:text-secondary-400'
+                      ? 'bg-secondary-container/20 text-secondary-container'
+                      : 'bg-surface-container-highest text-on-surface-variant hover:bg-surface-variant'
                   }`}
                 >
                   {togglingPerm === toggleKey ? '...' : has ? 'ON' : 'OFF'}
@@ -137,14 +137,14 @@ export function MemberItem({
 
       {/* Read-only permissions (expanded, non-admin or self) */}
       {isExpanded && (!isAdmin || isSelf) && (
-        <div className="mt-2 space-y-1 border-t border-secondary-100 pt-2 dark:border-secondary-600">
+        <div className="mt-2 space-y-1.5 border-t border-outline-variant/10 pt-2">
           {permissions.map((p) => (
             <div
               key={p}
-              className="flex items-center justify-between text-xs text-secondary-600 dark:text-secondary-400"
+              className="flex items-center justify-between text-xs text-on-surface-variant"
             >
               <span>{permissionLabel(p)}</span>
-              <span className="rounded bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
+              <span className="rounded-full bg-secondary-container/20 px-2.5 py-0.5 text-[10px] font-bold text-secondary-container">
                 ON
               </span>
             </div>

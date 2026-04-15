@@ -16,60 +16,97 @@ export function Sidebar({
   loading = false,
 }: Readonly<SidebarProps>) {
   return (
-    <aside className="flex w-72 flex-col border-r border-secondary-200 bg-white dark:border-secondary-700 dark:bg-secondary-800">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-secondary-200 px-4 py-3 dark:border-secondary-700">
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-secondary-700 dark:text-secondary-300">
-            Groups
-          </h2>
-          {loading && (
-            <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
-          )}
+    <aside className="flex w-64 shrink-0 flex-col bg-surface border-r border-outline-variant/10">
+      {/* Logo + New Group button */}
+      <div className="px-6 pt-6 pb-4">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-lg droplet-gradient flex items-center justify-center shrink-0">
+            <span
+              className="material-symbols-outlined text-on-primary-fixed"
+              style={{ fontVariationSettings: "'FILL' 1" }}
+            >
+              water_drop
+            </span>
+          </div>
+          <div>
+            <p className="font-headline font-black text-on-surface leading-tight">Seal ID</p>
+            <p className="text-on-surface-variant text-[10px] uppercase tracking-widest font-bold">
+              Encrypted Groups
+            </p>
+          </div>
         </div>
+
         <button
           onClick={onCreateGroup}
-          className="rounded-lg bg-primary-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-600"
+          className="w-full py-2.5 px-4 droplet-gradient rounded-full text-on-primary-fixed font-bold flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-lg"
         >
-          + New
+          <span className="material-symbols-outlined text-sm">edit_square</span>
+          <span className="font-headline tracking-tight text-sm">New Group</span>
         </button>
       </div>
 
-      {/* Group list */}
-      <div className="flex-1 overflow-y-auto">
+      {/* Groups list */}
+      <div className="flex-1 overflow-y-auto px-2">
+        {/* Section header */}
+        <div className="flex items-center justify-between px-3 py-2">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-primary">
+            Groups
+          </span>
+          {loading && (
+            <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          )}
+        </div>
+
         {groups.length === 0 ? (
-          <div className="px-4 py-8 text-center text-sm text-secondary-400 dark:text-secondary-500">
+          <div className="px-3 py-8 text-center text-sm text-on-surface-variant">
             {loading ? (
               'Discovering groups...'
             ) : (
               <>
                 No groups yet.
                 <br />
-                Create or join one!
+                Create one to get started!
               </>
             )}
           </div>
         ) : (
-          <ul className="py-1">
-            {groups.map((group) => (
-              <li key={group.uuid || group.groupId}>
-                <button
-                  onClick={() => onSelectGroup(group.uuid || group.groupId)}
-                  className={`w-full px-4 py-3 text-left transition-colors ${
-                    (selectedUuid === group.uuid ||
-                      selectedUuid === group.groupId) &&
-                    selectedUuid
-                      ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
-                      : 'text-secondary-700 hover:bg-secondary-50 dark:text-secondary-300 dark:hover:bg-secondary-700/50'
-                  }`}
-                >
-                  <p className="text-sm font-medium truncate">{group.name}</p>
-                  <p className="mt-0.5 text-xs text-secondary-400 font-mono dark:text-secondary-500">
-                    {group.groupId.slice(0, 8)}...{group.groupId.slice(-6)}
-                  </p>
-                </button>
-              </li>
-            ))}
+          <ul className="space-y-0.5 pb-4">
+            {groups.map((group) => {
+              const isActive =
+                (selectedUuid === group.uuid || selectedUuid === group.groupId) &&
+                !!selectedUuid;
+              return (
+                <li key={group.uuid || group.groupId}>
+                  <button
+                    onClick={() => onSelectGroup(group.uuid || group.groupId)}
+                    className={`w-full px-4 py-3 text-left rounded-xl transition-all duration-200 ${
+                      isActive
+                        ? 'bg-gradient-to-r from-primary/20 to-transparent text-primary border-l-4 border-primary-container rounded-l-none'
+                        : 'text-on-surface/60 hover:text-on-surface hover:bg-surface-container-high/50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                        isActive ? 'bg-primary/20' : 'bg-surface-container-high'
+                      }`}>
+                        <span
+                          className="material-symbols-outlined text-sm"
+                          style={isActive ? { fontVariationSettings: "'FILL' 1" } : {}}
+                        >
+                          forum
+                        </span>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate font-headline">{group.name}</p>
+                        <p className="mt-0.5 text-[10px] text-on-surface-variant font-mono truncate">
+                          {group.groupId.slice(0, 8)}...{group.groupId.slice(-6)}
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

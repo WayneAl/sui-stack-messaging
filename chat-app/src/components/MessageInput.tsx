@@ -31,7 +31,6 @@ export function MessageInput({
     const trimmed = text.trim();
     if ((!trimmed && files.length === 0) || disabled || sending) return;
 
-    // Convert File objects to AttachmentFile[]
     let attachmentFiles: AttachmentFile[] | undefined;
     if (files.length > 0) {
       attachmentFiles = await Promise.all(
@@ -86,23 +85,26 @@ export function MessageInput({
   const canSend = (text.trim() || files.length > 0) && !disabled && !sending;
 
   return (
-    <div className="border-t border-secondary-200 px-4 py-3 dark:border-secondary-700">
+    <div className="bg-surface-container-lowest/50 backdrop-blur-xl border-t border-outline-variant/5 px-6 py-4">
       {/* File chips */}
       {files.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-1.5">
+        <div className="mb-3 flex flex-wrap gap-1.5">
           {files.map((f, i) => (
             <div
               key={`${f.name}-${i}`}
-              className="flex items-center gap-1 rounded-full bg-secondary-100 px-2.5 py-1 text-xs text-secondary-700 dark:bg-secondary-700 dark:text-secondary-300"
+              className="flex items-center gap-1.5 rounded-full bg-surface-container-high px-3 py-1 text-xs text-on-surface"
             >
-              <span className="max-w-30 truncate">{f.name}</span>
-              <span className="text-secondary-400">{formatSize(f.size)}</span>
+              <span className="material-symbols-outlined text-xs text-secondary-container" style={{ fontSize: '14px' }}>
+                {f.type.startsWith('image/') ? 'image' : 'description'}
+              </span>
+              <span className="max-w-[8rem] truncate">{f.name}</span>
+              <span className="text-on-surface-variant">{formatSize(f.size)}</span>
               <button
                 onClick={() => removeFile(i)}
-                className="ml-0.5 text-secondary-400 hover:text-danger-500"
+                className="ml-0.5 text-on-surface-variant hover:text-error transition-colors"
                 title="Remove"
               >
-                ✕
+                <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>close</span>
               </button>
             </div>
           ))}
@@ -111,38 +113,47 @@ export function MessageInput({
 
       {/* File error */}
       {fileError && (
-        <p className="mb-1.5 text-xs text-danger-500">{fileError}</p>
+        <p className="mb-2 text-xs text-error">{fileError}</p>
       )}
 
       {/* Sending indicator */}
       {sending && (
-        <div className="mb-2 flex items-center gap-2 text-xs text-secondary-500">
-          <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
+        <div className="mb-2 flex items-center gap-2 text-xs text-on-surface-variant">
+          <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           <span>Sending{files.length > 0 ? ' (uploading files...)' : '...'}</span>
         </div>
       )}
 
-      <div className="flex gap-2">
-        {/* Attachment button */}
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={disabled || sending}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-secondary-400 hover:bg-secondary-100 hover:text-secondary-600 disabled:opacity-50 dark:hover:bg-secondary-700 dark:hover:text-secondary-300"
-          title="Attach files"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            className="h-5 w-5"
-          >
-            <path
-              fillRule="evenodd"
-              d="M15.621 4.379a3 3 0 00-4.242 0l-7 7a3 3 0 004.241 4.243h.001l.497-.5a.75.75 0 011.064 1.057l-.498.501-.002.002a4.5 4.5 0 01-6.364-6.364l7-7a4.5 4.5 0 016.368 6.36l-3.455 3.553A2.625 2.625 0 119.52 9.52l3.45-3.451a.75.75 0 111.061 1.06l-3.45 3.451a1.125 1.125 0 001.587 1.595l3.454-3.553a3 3 0 000-4.242z"
-              clipRule="evenodd"
-            />
-          </svg>
-        </button>
+      <div className="flex items-end gap-3">
+        {/* Input container */}
+        <div className="flex-1 bg-surface-container-low rounded-2xl p-2 flex flex-col gap-2 transition-all focus-within:ring-1 focus-within:ring-primary/40 shadow-inner">
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type an encrypted message..."
+            rows={1}
+            disabled={disabled || sending}
+            className="bg-transparent border-none focus:ring-0 text-sm text-on-surface placeholder:text-on-surface-variant/50 w-full resize-none py-2 px-3 outline-none disabled:opacity-50"
+          />
+          <div className="flex items-center px-2 pb-1">
+            <div className="flex items-center gap-1">
+              {/* Attachment button */}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={disabled || sending}
+                className="p-2 text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-all rounded-full flex items-center gap-1.5 group disabled:opacity-50"
+                title="Attach files via Walrus Storage"
+              >
+                <span className="material-symbols-outlined text-base">attach_file</span>
+                <span className="text-[10px] font-bold hidden md:inline group-hover:text-primary transition-colors">
+                  Walrus Storage
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+
         <input
           ref={fileInputRef}
           type="file"
@@ -150,26 +161,19 @@ export function MessageInput({
           className="hidden"
           onChange={(e) => {
             handleFilesSelected(e.target.files);
-            // Reset so the same file can be selected again
             e.target.value = '';
           }}
         />
 
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Type a message..."
-          rows={1}
-          disabled={disabled || sending}
-          className="flex-1 resize-none rounded-lg border border-secondary-300 bg-white px-3 py-2 text-sm text-secondary-900 placeholder:text-secondary-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 disabled:opacity-50 dark:border-secondary-600 dark:bg-secondary-700 dark:text-secondary-100 dark:placeholder:text-secondary-500"
-        />
+        {/* Send button */}
         <button
           onClick={handleSend}
           disabled={!canSend}
-          className="rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600 disabled:opacity-50 disabled:hover:bg-primary-500"
+          className="w-12 h-12 rounded-full droplet-gradient flex items-center justify-center text-on-primary-fixed shadow-lg active:scale-95 transition-transform disabled:opacity-50 shrink-0"
         >
-          {sending ? '...' : 'Send'}
+          <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>
+            send
+          </span>
         </button>
       </div>
     </div>

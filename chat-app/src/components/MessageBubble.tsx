@@ -40,7 +40,6 @@ function formatSize(bytes: number): string {
 
 function AttachmentItem({
   handle,
-  isOwnMessage,
 }: Readonly<{
   handle: AttachmentHandle;
   isOwnMessage: boolean;
@@ -51,7 +50,6 @@ function AttachmentItem({
 
   const isImage = handle.mimeType.startsWith('image/');
 
-  // Cleanup object URL on unmount
   useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -66,12 +64,9 @@ function AttachmentItem({
       const blob = new Blob([new Uint8Array(data)], { type: handle.mimeType });
       const url = URL.createObjectURL(blob);
 
-      // For images, show inline preview
       if (isImage) {
         setPreviewUrl(url);
-        // Don't revoke — the img element needs it
       } else {
-        // Trigger download
         const a = document.createElement('a');
         a.href = url;
         a.download = handle.fileName;
@@ -89,53 +84,56 @@ function AttachmentItem({
   }, [handle, isImage]);
 
   return (
-    <div className="mt-1.5">
+    <div className="mt-2">
       {/* Image preview */}
       {previewUrl && isImage && (
         <img
           src={previewUrl}
           alt={handle.fileName}
-          className="mb-1 max-h-48 rounded-lg object-contain"
+          className="mb-2 max-h-48 rounded-xl object-contain"
         />
       )}
-      <div
-        className={`flex items-center gap-2 rounded-lg p-1.5 text-xs ${
-          isOwnMessage
-            ? 'bg-white/10'
-            : 'bg-secondary-200/50 dark:bg-secondary-600/50'
-        }`}
-      >
-        <span className="truncate font-medium" title={handle.fileName}>
-          {handle.fileName}
-        </span>
-        <span
-          className={
-            isOwnMessage
-              ? 'text-primary-200'
-              : 'text-secondary-400 dark:text-secondary-500'
-          }
-        >
-          {formatSize(handle.fileSize)}
-        </span>
+      {/* File card */}
+      <div className="flex items-center gap-3 bg-surface-container-low p-3 rounded-xl">
+        <div className="w-10 h-10 bg-surface-container-high rounded-xl flex items-center justify-center shrink-0">
+          <span className="material-symbols-outlined text-secondary-container text-base">
+            {isImage ? 'image' : 'description'}
+          </span>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate text-on-surface" title={handle.fileName}>
+            {handle.fileName}
+          </p>
+          <p className="text-[10px] text-on-surface-variant">{formatSize(handle.fileSize)}</p>
+        </div>
 
         {error ? (
-          <span className="text-danger-400">failed</span>
+          <span className="text-xs text-error shrink-0">failed</span>
         ) : (
           <button
             onClick={handleDownload}
             disabled={downloading}
-            className={`ml-auto shrink-0 rounded px-1.5 py-0.5 font-medium ${
-              isOwnMessage
-                ? 'text-white/80 hover:text-white disabled:opacity-50'
-                : 'text-primary-500 hover:text-primary-600 disabled:opacity-50'
-            }`}
+            className="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center text-primary hover:bg-surface-variant transition-colors disabled:opacity-50 shrink-0"
             title={isImage && !previewUrl ? 'Preview' : 'Download'}
           >
-            {downloading && '...'}
-            {!downloading && isImage && !previewUrl && 'View'}
-            {!downloading && !(isImage && !previewUrl) && '↓'}
+            {downloading ? (
+              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            ) : (
+              <span className="material-symbols-outlined text-sm">
+                {isImage && !previewUrl ? 'visibility' : 'download'}
+              </span>
+            )}
           </button>
         )}
+      </div>
+      {/* Walrus storage indicator */}
+      <div className="mt-2 flex items-center gap-1.5 bg-surface-variant/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-outline-variant/15 w-fit">
+        <span className="material-symbols-outlined text-secondary-fixed text-xs" style={{ fontSize: '14px' }}>
+          cloud_done
+        </span>
+        <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider">
+          Stored on Walrus
+        </span>
       </div>
     </div>
   );
@@ -154,7 +152,6 @@ export function MessageBubble({
   const [deleting, setDeleting] = useState(false);
   const editRef = useRef<HTMLTextAreaElement>(null);
 
-  // Focus textarea when entering edit mode
   useEffect(() => {
     if (editing && editRef.current) {
       editRef.current.focus();
@@ -165,7 +162,7 @@ export function MessageBubble({
   if (message.isDeleted) {
     return (
       <div className="flex justify-center py-1">
-        <span className="text-xs italic text-secondary-400 dark:text-secondary-500">
+        <span className="text-xs italic text-on-surface-variant">
           Message deleted
         </span>
       </div>
@@ -186,7 +183,7 @@ export function MessageBubble({
       await onEdit(message.messageId, trimmed);
       setEditing(false);
     } catch {
-      // Error is handled in the hook; keep edit mode open
+      // Error handled in hook; keep edit mode open
     } finally {
       setSaving(false);
     }
@@ -214,7 +211,7 @@ export function MessageBubble({
       await onDelete(message.messageId);
       setShowDeleteConfirm(false);
     } catch {
-      // Error is handled in the hook
+      // Error handled in hook
     } finally {
       setDeleting(false);
     }
@@ -222,49 +219,50 @@ export function MessageBubble({
 
   return (
     <div
-      className={`group flex ${isOwnMessage ? 'justify-end' : 'justify-start'} px-4 py-1`}
+      className={`group flex ${isOwnMessage ? 'justify-end' : 'justify-start'} px-6 py-1`}
     >
       <div className="relative max-w-[70%]">
-        {/* Action buttons (visible on hover, own messages only) */}
+        {/* Action buttons (hover, own messages only) */}
         {isOwnMessage && !editing && (onEdit || onDelete) && (
-          <div className="absolute -top-3 right-2 z-10 hidden rounded-lg border border-secondary-200 bg-white shadow-sm group-hover:flex dark:border-secondary-600 dark:bg-secondary-700">
+          <div className="absolute -top-3 right-2 z-10 hidden rounded-lg bg-surface-container-highest border border-outline-variant/20 shadow-sm group-hover:flex">
             {onEdit && (
               <button
                 onClick={() => {
                   setEditText(message.text);
                   setEditing(true);
                 }}
-                className="px-2 py-1 text-xs text-secondary-500 hover:text-primary-500 dark:text-secondary-400 dark:hover:text-primary-400"
+                className="px-2 py-1 text-xs text-on-surface-variant hover:text-primary transition-colors"
                 title="Edit"
               >
-                ✎
+                <span className="material-symbols-outlined text-sm">edit</span>
               </button>
             )}
             {onDelete && (
               <button
                 onClick={() => setShowDeleteConfirm(true)}
-                className="px-2 py-1 text-xs text-secondary-500 hover:text-danger-500 dark:text-secondary-400 dark:hover:text-danger-400"
+                className="px-2 py-1 text-xs text-on-surface-variant hover:text-error transition-colors"
                 title="Delete"
               >
-                ✕
+                <span className="material-symbols-outlined text-sm">delete</span>
               </button>
             )}
           </div>
         )}
 
+        {/* Bubble */}
         <div
-          className={`rounded-2xl px-4 py-2 ${
+          className={`px-4 py-3 ${
             isOwnMessage
-              ? 'bg-primary-500 text-white'
-              : 'bg-secondary-100 text-secondary-900 dark:bg-secondary-700 dark:text-secondary-100'
-          }`}
+              ? 'bg-primary-container text-on-primary-container rounded-tl-xl rounded-tr-xl rounded-bl-xl'
+              : 'bg-surface-container-highest text-on-surface rounded-tl-xl rounded-tr-xl rounded-br-xl'
+          } shadow-sm text-sm leading-relaxed`}
         >
-          {/* Sender (only for other people's messages) */}
+          {/* Sender (other people's messages only) */}
           {!isOwnMessage && message.senderAddress && (
-            <p className="mb-0.5 text-xs font-medium text-secondary-500 dark:text-secondary-400">
+            <p className="mb-1 text-xs font-medium text-on-surface-variant font-headline">
               {truncateAddress(message.senderAddress)}
               {message.senderVerified && (
-                <span className="ml-1 text-green-500" title="Sender verified">
+                <span className="ml-1 text-secondary-container" title="Sender verified">
                   ✓
                 </span>
               )}
@@ -281,20 +279,20 @@ export function MessageBubble({
                 onKeyDown={handleEditKeyDown}
                 rows={2}
                 disabled={saving}
-                className="w-full resize-none rounded-lg border border-primary-300 bg-white px-2 py-1 text-sm text-secondary-900 focus:outline-none focus:ring-1 focus:ring-primary-300 disabled:opacity-50"
+                className="w-full resize-none rounded-lg bg-surface-container-low border border-outline-variant/20 px-2 py-1 text-sm text-on-surface focus:outline-none focus:ring-1 focus:ring-primary/40 disabled:opacity-50"
               />
               <div className="flex justify-end gap-1">
                 <button
                   onClick={handleCancelEdit}
                   disabled={saving}
-                  className="rounded px-2 py-0.5 text-xs text-primary-200 hover:text-white disabled:opacity-50"
+                  className="rounded px-2 py-0.5 text-xs text-on-surface-variant hover:text-on-surface disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSaveEdit}
                   disabled={saving || !editText.trim()}
-                  className="rounded bg-white/20 px-2 py-0.5 text-xs font-medium text-white hover:bg-white/30 disabled:opacity-50"
+                  className="rounded-full droplet-gradient px-3 py-0.5 text-xs font-medium text-on-primary-fixed disabled:opacity-50"
                 >
                   {saving ? '...' : 'Save'}
                 </button>
@@ -303,7 +301,7 @@ export function MessageBubble({
           ) : (
             <>
               {message.text && (
-                <p className="whitespace-pre-wrap wrap-break-word text-sm">
+                <p className="whitespace-pre-wrap wrap-break-word">
                   {message.text}
                 </p>
               )}
@@ -312,7 +310,7 @@ export function MessageBubble({
 
           {/* Attachments */}
           {message.attachments?.length > 0 && (
-            <div className="space-y-1">
+            <div className="space-y-1 mt-1">
               {message.attachments.map((handle, i) => (
                 <AttachmentItem
                   key={`${handle.fileName}-${i}`}
@@ -323,47 +321,56 @@ export function MessageBubble({
             </div>
           )}
 
-          {/* Footer: time + edited badge */}
+          {/* Footer: time + badges */}
           <div
-            className={`mt-1 flex items-center gap-1 text-xs ${
-              isOwnMessage
-                ? 'text-primary-200'
-                : 'text-secondary-400 dark:text-secondary-500'
+            className={`mt-2 flex items-center gap-1 text-[10px] ${
+              isOwnMessage ? 'text-on-primary-container/60' : 'text-on-surface-variant'
             }`}
           >
             <span>{formatTime(message.createdAt)}</span>
             {message.isEdited && <span className="italic">(edited)</span>}
             {message.senderVerified && isOwnMessage && (
-              <span title="Sender verified">✓</span>
+              <span title="Sender verified">
+                <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1", fontSize: '12px' }}>
+                  done_all
+                </span>
+              </span>
             )}
-            {/* Sync status badge (CHAT-053) */}
             {isOwnMessage && message.syncStatus === 'SYNC_PENDING' && (
-              <span title="Sending...">○</span>
+              <span title="Sending...">
+                <span className="material-symbols-outlined text-xs" style={{ fontSize: '12px' }}>
+                  schedule
+                </span>
+              </span>
             )}
             {isOwnMessage && message.syncStatus === 'SYNCED' && (
-              <span title="Delivered">●</span>
+              <span title="Delivered">
+                <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1", fontSize: '12px' }}>
+                  done_all
+                </span>
+              </span>
             )}
           </div>
         </div>
 
         {/* Delete confirmation popover */}
         {showDeleteConfirm && (
-          <div className="absolute -top-16 right-0 z-20 rounded-lg border border-secondary-200 bg-white p-3 shadow-lg dark:border-secondary-600 dark:bg-secondary-700">
-            <p className="mb-2 text-xs text-secondary-600 dark:text-secondary-300">
+          <div className="absolute -top-20 right-0 z-20 rounded-xl bg-surface-container border border-outline-variant/20 p-3 shadow-[0_20px_40px_rgba(211,251,255,0.06)]">
+            <p className="mb-2 text-xs text-on-surface-variant">
               Delete this message?
             </p>
             <div className="flex justify-end gap-1">
               <button
                 onClick={() => setShowDeleteConfirm(false)}
                 disabled={deleting}
-                className="rounded px-2 py-0.5 text-xs text-secondary-500 hover:text-secondary-700 disabled:opacity-50"
+                className="rounded px-2 py-0.5 text-xs text-on-surface-variant hover:text-on-surface disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDelete}
                 disabled={deleting}
-                className="rounded bg-danger-500 px-2 py-0.5 text-xs font-medium text-white hover:bg-danger-600 disabled:opacity-50"
+                className="rounded-full bg-error/20 border border-error/30 px-3 py-0.5 text-xs font-medium text-error hover:bg-error/30 disabled:opacity-50"
               >
                 {deleting ? '...' : 'Delete'}
               </button>

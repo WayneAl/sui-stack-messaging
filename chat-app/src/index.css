@@ -1,56 +1,117 @@
 @import 'tailwindcss';
 
 /*
- * Custom theme for Sui Messaging Chat.
- * Tailwind v4 uses CSS-native @theme instead of tailwind.config.js.
- * Dark mode: use `class` strategy via `@variant dark (&:where(.dark, .dark *))`.
+ * HydroVault — Hydro-Digital Vault design system
+ * Ported from Stitch project (projects/9783387890452838122)
+ * Tailwind v4 uses CSS-native @theme for color tokens.
  */
 @theme {
-  /* Primary - Sui brand blue */
-  --color-primary-50: #eff6ff;
-  --color-primary-100: #dbeafe;
-  --color-primary-200: #bfdbfe;
-  --color-primary-300: #93c5fd;
-  --color-primary-400: #60a5fa;
-  --color-primary-500: #4f63f6;
-  --color-primary-600: #4338ca;
-  --color-primary-700: #3730a3;
-  --color-primary-800: #312e81;
-  --color-primary-900: #1e1b4b;
+  /* ── Surface / Background ── */
+  --color-background:                #0b1326;
+  --color-surface:                   #0b1326;
+  --color-surface-dim:               #0b1326;
+  --color-surface-bright:            #31394d;
+  --color-surface-container-lowest:  #060e20;
+  --color-surface-container-low:     #131b2e;
+  --color-surface-container:         #171f33;
+  --color-surface-container-high:    #222a3d;
+  --color-surface-container-highest: #2d3449;
+  --color-surface-variant:           #2d3449;
+  --color-surface-tint:              #a2c9ff;
 
-  /* Secondary - neutral grays */
-  --color-secondary-50: #f8fafc;
-  --color-secondary-100: #f1f5f9;
-  --color-secondary-200: #e2e8f0;
-  --color-secondary-300: #cbd5e1;
-  --color-secondary-400: #94a3b8;
-  --color-secondary-500: #64748b;
-  --color-secondary-600: #475569;
-  --color-secondary-700: #334155;
-  --color-secondary-800: #1e293b;
-  --color-secondary-900: #0f172a;
+  /* ── Primary ── */
+  --color-primary:                   #a2c9ff;
+  --color-primary-container:         #499ffc;
+  --color-on-primary:                #00315b;
+  --color-on-primary-container:      #003562;
+  --color-on-primary-fixed:          #001c38;
+  --color-on-primary-fixed-variant:  #004881;
+  --color-primary-fixed:             #d3e4ff;
+  --color-primary-fixed-dim:         #a2c9ff;
+  --color-inverse-primary:           #0060a9;
 
-  /* Accent - teal for success/positive */
-  --color-accent-400: #2dd4bf;
-  --color-accent-500: #14b8a6;
-  --color-accent-600: #0d9488;
+  /* ── Secondary ── */
+  --color-secondary:                 #d3fbff;
+  --color-secondary-container:       #00eefc;
+  --color-secondary-fixed:           #7df4ff;
+  --color-secondary-fixed-dim:       #00dbe9;
+  --color-on-secondary:              #00363a;
+  --color-on-secondary-container:    #00686f;
+  --color-on-secondary-fixed:        #002022;
+  --color-on-secondary-fixed-variant: #004f54;
 
-  /* Danger - red for destructive actions */
+  /* ── Tertiary ── */
+  --color-tertiary:                  #bcc7de;
+  --color-tertiary-container:        #929db3;
+  --color-on-tertiary:               #263143;
+  --color-on-tertiary-container:     #2a3547;
+  --color-tertiary-fixed:            #d8e3fb;
+  --color-tertiary-fixed-dim:        #bcc7de;
+  --color-on-tertiary-fixed:         #111c2d;
+  --color-on-tertiary-fixed-variant: #3c475a;
+
+  /* ── On-surface text ── */
+  --color-on-surface:                #dae2fd;
+  --color-on-surface-variant:        #bec7d4;
+  --color-on-background:             #dae2fd;
+  --color-inverse-surface:           #dae2fd;
+  --color-inverse-on-surface:        #283044;
+
+  /* ── Outline ── */
+  --color-outline:                   #88919d;
+  --color-outline-variant:           #3f4852;
+
+  /* ── Error ── */
+  --color-error:                     #ffb4ab;
+  --color-error-container:           #93000a;
+  --color-on-error:                  #690005;
+  --color-on-error-container:        #ffdad6;
+
+  /* ── Danger aliases (for existing usage) ── */
   --color-danger-400: #f87171;
-  --color-danger-500: #ef4444;
-  --color-danger-600: #dc2626;
-}
+  --color-danger-500: #ffb4ab;
+  --color-danger-600: #ff897d;
 
-@variant dark (&:where(.dark, .dark *));
+  /* ── Fonts ── */
+  --font-headline: 'Plus Jakarta Sans', sans-serif;
+  --font-sans: 'Inter', sans-serif;
+}
 
 /* Base styles */
 @layer base {
   body {
-    @apply bg-white text-secondary-900 antialiased;
-    @apply dark:bg-secondary-900 dark:text-secondary-100;
+    font-family: 'Inter', sans-serif;
+    background-color: #0b1326;
+    color: #dae2fd;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   #root {
-    @apply min-h-screen;
+    min-height: 100vh;
+  }
+}
+
+/* Reusable utility classes */
+@layer utilities {
+  .font-headline {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+  }
+
+  .droplet-gradient {
+    background: linear-gradient(135deg, #a2c9ff 0%, #499ffc 100%);
+  }
+
+  .glass-panel {
+    background: rgba(45, 52, 73, 0.4);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    display: inline-block;
+    vertical-align: middle;
+    font-size: 1.25rem;
   }
 }

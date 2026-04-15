@@ -293,17 +293,17 @@ export function AdminPanel({
   if (!open) return null;
 
   return (
-    <div className="flex w-80 flex-col border-l border-secondary-200 bg-white dark:border-secondary-700 dark:bg-secondary-800">
+    <div className="flex w-80 shrink-0 flex-col border-l border-outline-variant/10 bg-surface-container-low">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-secondary-200 px-4 py-3 dark:border-secondary-700">
-        <h3 className="text-sm font-semibold text-secondary-800 dark:text-secondary-200">
+      <div className="flex items-center justify-between bg-surface-container px-4 py-4 border-b border-outline-variant/10">
+        <h3 className="font-headline text-sm font-bold text-on-surface">
           {permissions.isAdmin ? 'Admin Panel' : 'Group Info'}
         </h3>
         <button
           onClick={onClose}
-          className="rounded p-1 text-secondary-400 hover:text-secondary-600 dark:hover:text-secondary-300"
+          className="rounded-full p-1.5 text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors"
         >
-          ✕
+          <span className="material-symbols-outlined text-base">close</span>
         </button>
       </div>
 

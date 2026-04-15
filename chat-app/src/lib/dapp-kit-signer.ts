@@ -6,14 +6,12 @@
  * by lazily extracting the public key from the first signature when the wallet
  * doesn't expose publicKey upfront.
  */
-import { Signer, parseSerializedSignature } from '@mysten/sui/cryptography';
-import type { PublicKey, SignatureScheme } from '@mysten/sui/cryptography';
-import { publicKeyFromRawBytes, publicKeyFromSuiBytes } from '@mysten/sui/verify';
-import { toBase64 } from '@mysten/sui/utils';
+import { Signer, parseSerializedSignature } from "@mysten/sui/cryptography";
+import type { PublicKey, SignatureScheme } from "@mysten/sui/cryptography";
+import { publicKeyFromRawBytes, publicKeyFromSuiBytes } from "@mysten/sui/verify";
+import { toBase64 } from "@mysten/sui/utils";
 
-export type SignPersonalMessageFn = (args: {
-  message: Uint8Array;
-}) => Promise<{ signature: string }>;
+export type SignPersonalMessageFn = (args: { message: Uint8Array }) => Promise<{ signature: string }>;
 
 export class DappKitSigner extends Signer {
   readonly #address: string;
@@ -27,22 +25,25 @@ export class DappKitSigner extends Signer {
   }) {
     super();
     this.#address = opts.address;
-    this.#publicKey =
-      opts.publicKeyBytes?.length
-        ? publicKeyFromSuiBytes(opts.publicKeyBytes)
-        : null;
+    if (opts.publicKeyBytes?.length) {
+      try {
+        this.#publicKey = publicKeyFromSuiBytes(opts.publicKeyBytes);
+      } catch {
+        // account.publicKey from dapp-kit may be raw bytes without a scheme flag.
+        // Fall back to null — the key will be resolved from the first signature.
+        this.#publicKey = null;
+      }
+    } else {
+      this.#publicKey = null;
+    }
     this.#signPersonalMessage = opts.signPersonalMessage;
   }
 
   async sign(_bytes: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
-    throw new Error(
-      'DappKitSigner.sign() is not supported. Use signPersonalMessage() instead.',
-    );
+    throw new Error("DappKitSigner.sign() is not supported. Use signPersonalMessage() instead.");
   }
 
-  override async signPersonalMessage(
-    bytes: Uint8Array,
-  ): Promise<{ bytes: string; signature: string }> {
+  override async signPersonalMessage(bytes: Uint8Array): Promise<{ bytes: string; signature: string }> {
     const { signature } = await this.#signPersonalMessage({
       message: bytes,
     });
@@ -50,11 +51,8 @@ export class DappKitSigner extends Signer {
     // Extract public key from the signature if not already known
     if (!this.#publicKey) {
       const parsed = parseSerializedSignature(signature);
-      if ('publicKey' in parsed && parsed.publicKey) {
-        this.#publicKey = publicKeyFromRawBytes(
-          parsed.signatureScheme,
-          parsed.publicKey,
-        );
+      if ("publicKey" in parsed && parsed.publicKey) {
+        this.#publicKey = publicKeyFromRawBytes(parsed.signatureScheme, parsed.publicKey);
       }
     }
 
@@ -63,18 +61,18 @@ export class DappKitSigner extends Signer {
 
   getKeyScheme(): SignatureScheme {
     if (!this.#publicKey) {
-      return 'ED25519'; // default until first signature resolves it
+      return "ED25519"; // default until first signature resolves it
     }
     const flag = this.#publicKey.flag();
-    if (flag === 0x00) return 'ED25519';
-    if (flag === 0x01) return 'Secp256k1';
-    return 'Secp256r1';
+    if (flag === 0x00) return "ED25519";
+    if (flag === 0x01) return "Secp256k1";
+    return "Secp256r1";
   }
 
   getPublicKey(): PublicKey {
     if (!this.#publicKey) {
       throw new Error(
-        'Public key not yet available. It will be resolved after the first signPersonalMessage call.',
+        "Public key not yet available. It will be resolved after the first signPersonalMessage call.",
       );
     }
     return this.#publicKey;

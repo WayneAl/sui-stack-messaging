@@ -41,20 +41,20 @@ export function MemberList({
   const [expandedMember, setExpandedMember] = useState<string | null>(null);
 
   return (
-    <section className="border-b border-secondary-100 p-4 dark:border-secondary-700">
-      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-secondary-500 dark:text-secondary-400">
+    <section className="border-b border-outline-variant/10 p-4">
+      <h4 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
         Members ({members.length})
       </h4>
 
       {loading && (
         <div className="flex items-center gap-2 py-4">
-          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
-          <span className="text-xs text-secondary-400">Loading...</span>
+          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <span className="text-xs text-on-surface-variant">Loading...</span>
         </div>
       )}
 
       {!loading && members.length === 0 && (
-        <p className="text-xs text-secondary-400">No members found.</p>
+        <p className="text-xs text-on-surface-variant">No members found.</p>
       )}
 
       {!loading && members.length > 0 && (
@@ -87,7 +87,7 @@ export function MemberList({
       )}
 
       {removeError && (
-        <p className="mt-2 text-xs text-danger-500">{removeError}</p>
+        <p className="mt-2 text-xs text-error">{removeError}</p>
       )}
     </section>
   );

@@ -36,12 +36,19 @@ function App() {
     ) ?? null;
 
   return (
-    <div className="flex h-screen flex-col bg-secondary-50 dark:bg-secondary-900">
+    <div className="flex h-screen flex-col bg-surface">
       {/* Header */}
-      <header className="flex items-center justify-between border-b border-secondary-200 bg-white px-6 py-3 dark:border-secondary-700 dark:bg-secondary-800">
-        <h1 className="text-lg font-semibold text-primary-600 dark:text-primary-400">
-          Sui Messaging Chat
-        </h1>
+      <header className="flex items-center justify-between border-b border-outline-variant/10 bg-surface/80 backdrop-blur-xl px-6 h-16 z-50 shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 droplet-gradient rounded-lg flex items-center justify-center shrink-0">
+            <span className="material-symbols-outlined text-on-primary-fixed text-base" style={{ fontVariationSettings: "'FILL' 1" }}>
+              waves
+            </span>
+          </div>
+          <span className="font-headline text-xl font-bold tracking-tight bg-gradient-to-br from-primary to-primary-container bg-clip-text text-transparent">
+            HydroVault
+          </span>
+        </div>
         <ConnectButton />
       </header>
 
@@ -59,10 +66,20 @@ function App() {
         </div>
       ) : (
         <main className="flex flex-1 items-center justify-center">
-          <div className="text-center">
-            <p className="text-secondary-500 dark:text-secondary-400">
-              Connect your wallet to get started.
-            </p>
+          <div className="text-center space-y-4">
+            <div className="w-16 h-16 droplet-gradient rounded-2xl flex items-center justify-center mx-auto">
+              <span className="material-symbols-outlined text-on-primary-fixed text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                water_drop
+              </span>
+            </div>
+            <div>
+              <h2 className="font-headline text-2xl font-bold text-on-surface tracking-tight">
+                HydroVault
+              </h2>
+              <p className="text-on-surface-variant text-sm mt-1">
+                Connect your wallet to access encrypted messaging
+              </p>
+            </div>
           </div>
         </main>
       )}

@@ -27,8 +27,8 @@ export function AddMemberForm({
   onSubmit,
 }: Readonly<AddMemberFormProps>) {
   return (
-    <section className="border-b border-secondary-100 p-4 dark:border-secondary-700">
-      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-secondary-500 dark:text-secondary-400">
+    <section className="border-b border-outline-variant/10 p-4">
+      <h4 className="mb-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
         Add Member
       </h4>
 
@@ -39,43 +39,43 @@ export function AddMemberForm({
           onChange={(e) => onAddressChange(e.target.value)}
           placeholder="Sui address (0x...)"
           disabled={adding}
-          className="w-full rounded-lg border border-secondary-300 bg-white px-3 py-1.5 text-xs text-secondary-900 placeholder:text-secondary-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 disabled:opacity-50 dark:border-secondary-600 dark:bg-secondary-700 dark:text-secondary-100"
+          className="w-full rounded-xl bg-surface-container-high border-none px-3 py-2 text-xs text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary/40 disabled:opacity-50 font-mono"
         />
 
-        <div className="space-y-1">
-          <label className="flex items-center gap-2 text-xs text-secondary-600 dark:text-secondary-400">
+        <div className="space-y-1.5">
+          <label className="flex items-center gap-2 text-xs text-on-surface-variant cursor-pointer">
             <input
               type="checkbox"
               checked={selectedPerms.length === messagingPermTypes.length}
               onChange={onSelectAllPerms}
               disabled={adding}
-              className="rounded"
+              className="rounded accent-primary"
             />
-            <span className="font-medium">Select All</span>
+            <span className="font-bold text-on-surface">Select All</span>
           </label>
           {messagingPermTypes.map((perm) => (
             <label
               key={perm.key}
-              className="flex items-center gap-2 text-xs text-secondary-600 dark:text-secondary-400"
+              className="flex items-center gap-2 text-xs text-on-surface-variant cursor-pointer"
             >
               <input
                 type="checkbox"
                 checked={selectedPerms.includes(perm.value)}
                 onChange={() => onTogglePerm(perm.value)}
                 disabled={adding}
-                className="rounded"
+                className="rounded accent-primary"
               />
               {perm.key}
             </label>
           ))}
         </div>
 
-        {addError && <p className="text-xs text-danger-500">{addError}</p>}
+        {addError && <p className="text-xs text-error">{addError}</p>}
 
         <button
           type="submit"
           disabled={adding}
-          className="w-full rounded-lg bg-primary-500 py-1.5 text-xs font-medium text-white hover:bg-primary-600 disabled:opacity-50"
+          className="w-full rounded-full droplet-gradient py-2 text-xs font-bold text-on-primary-fixed disabled:opacity-50 transition-transform active:scale-95"
         >
           {adding ? 'Adding...' : 'Add Member'}
         </button>

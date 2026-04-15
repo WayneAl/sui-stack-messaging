@@ -20,8 +20,8 @@ export function GroupNameSection({
   onRename,
 }: Readonly<GroupNameSectionProps>) {
   return (
-    <section className="border-b border-secondary-100 p-4 dark:border-secondary-700">
-      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-secondary-500 dark:text-secondary-400">
+    <section className="border-b border-outline-variant/10 p-4">
+      <h4 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
         Group Name
       </h4>
       {editingName ? (
@@ -35,13 +35,13 @@ export function GroupNameSection({
               if (e.key === 'Escape') onEditCancel();
             }}
             disabled={renaming}
-            className="flex-1 rounded-lg border border-secondary-300 bg-white px-2 py-1 text-xs text-secondary-900 focus:border-primary-500 focus:outline-none disabled:opacity-50 dark:border-secondary-600 dark:bg-secondary-700 dark:text-secondary-100"
+            className="flex-1 rounded-xl bg-surface-container-high border-none px-3 py-1.5 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary/40 disabled:opacity-50"
             autoFocus
           />
           <button
             onClick={onRename}
             disabled={renaming}
-            className="text-xs text-primary-500 hover:text-primary-600 disabled:opacity-50"
+            className="text-xs text-primary hover:text-primary-container transition-colors disabled:opacity-50"
           >
             {renaming ? '...' : 'Save'}
           </button>
@@ -49,9 +49,10 @@ export function GroupNameSection({
       ) : (
         <button
           onClick={onEditStart}
-          className="text-left text-xs text-secondary-700 hover:text-primary-500 dark:text-secondary-300"
+          className="text-left text-sm text-on-surface hover:text-primary transition-colors flex items-center gap-1"
         >
-          {groupName} <span className="text-secondary-400">✎</span>
+          {groupName}
+          <span className="material-symbols-outlined text-on-surface-variant" style={{ fontSize: '14px' }}>edit</span>
         </button>
       )}
     </section>
