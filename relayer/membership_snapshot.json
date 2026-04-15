@@ -1,0 +1,32 @@
+{
+  "groups": [
+    {
+      "group_id": "0x942ab0033a5ba7cf126eccf93c143cc89c24f42c95ea027333cb4acf87e457fb",
+      "members": [
+        {
+          "address": "0xd15f079d5f60b8fdfdcf3ca66c0d3473790c758b04b6418929d5d2991c5443ee",
+          "permissions": [
+            "MessagingEditor",
+            "MessagingSender",
+            "MessagingReader",
+            "MessagingDeleter"
+          ]
+        }
+      ]
+    },
+    {
+      "group_id": "0x06f16d0398665672dabd0ee14dae4e72df4bfb4839ceed99a3d53afd258316f9",
+      "members": [
+        {
+          "address": "0xd15f079d5f60b8fdfdcf3ca66c0d3473790c758b04b6418929d5d2991c5443ee",
+          "permissions": [
+            "MessagingDeleter",
+            "MessagingReader",
+            "MessagingEditor",
+            "MessagingSender"
+          ]
+        }
+      ]
+    }
+  ]
+}

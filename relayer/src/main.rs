@@ -26,7 +26,7 @@ use tracing::info;
 use auth::{auth_middleware, create_membership_store, AuthState};
 
 // Import background services
-use services::{MembershipSyncService, WalrusSyncService};
+use services::{load_snapshot, run_snapshot_loop, MembershipSyncService, WalrusSyncService};
 
 // Import Walrus client
 use walrus::WalrusClient;
@@ -57,11 +57,25 @@ async fn main() {
     // Initialize membership store (shared between auth middleware and sync service)
     let membership_store = create_membership_store(config.membership_store_type.clone());
 
+    // Load membership snapshot from disk if configured (restores state across restarts)
+    if let Some(ref path) = config.membership_snapshot_path {
+        load_snapshot(path, &membership_store);
+    }
+
     // Start the membership sync service (runs in background, updates cache from Sui events)
     let mut sync_service = MembershipSyncService::new(&config, membership_store.clone());
     tokio::spawn(async move {
         sync_service.run().await;
     });
+
+    // Start the membership snapshot service if configured (periodically saves state to disk)
+    if let Some(path) = config.membership_snapshot_path.clone() {
+        let store_for_snapshot = membership_store.clone();
+        let interval_secs = config.membership_snapshot_interval_secs;
+        tokio::spawn(async move {
+            run_snapshot_loop(path, store_for_snapshot, interval_secs).await;
+        });
+    }
 
     // Start the Walrus sync service (runs in background, uploads pending messages)
     let mut walrus_sync_service = WalrusSyncService::new(&config, storage, walrus_client, sync_rx);

@@ -42,6 +42,10 @@ pub enum MembershipStoreType {
 /// Trait defining the interface for membership storage backends.
 #[allow(dead_code)]
 pub trait MembershipStore: Send + Sync {
+    /// Returns all groups and their members with permissions.
+    /// Used for snapshotting membership state to disk.
+    fn get_all_groups(&self) -> HashMap<String, Vec<(String, Vec<MessagingPermission>)>>;
+
     /// Checks if an address has a specific permission in a group.
     fn has_permission(
         &self,
@@ -271,6 +275,20 @@ impl MembershipStore for InMemoryMembershipStore {
             group_members.insert(address, perm_set);
         }
         members.insert(group_id.to_string(), group_members);
+    }
+
+    fn get_all_groups(&self) -> HashMap<String, Vec<(String, Vec<MessagingPermission>)>> {
+        let members = self.members.read().unwrap();
+        members
+            .iter()
+            .map(|(group_id, group_members)| {
+                let member_list = group_members
+                    .iter()
+                    .map(|(addr, perms)| (addr.clone(), perms.iter().copied().collect()))
+                    .collect();
+                (group_id.clone(), member_list)
+            })
+            .collect()
     }
 }
 

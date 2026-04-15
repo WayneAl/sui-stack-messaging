@@ -1,5 +1,6 @@
 //! Permission types matching the Groups SDK smart contract.
 
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Messaging-specific permissions from the Groups SDK.
@@ -8,7 +9,7 @@ use std::fmt;
 /// `MessagingEditor`, can edit existing messages
 /// `MessagingDeleter`, can delete messages
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[allow(clippy::enum_variant_names)]
 pub enum MessagingPermission {
     MessagingSender,

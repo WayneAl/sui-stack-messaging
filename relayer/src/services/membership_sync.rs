@@ -159,9 +159,15 @@ impl MembershipSyncService {
                         .grant_permissions(group_id, member, permissions.clone())
                 {
                     warn!(
-                        "Failed to grant permissions: {} - possible missed MemberAdded event",
-                        e
+                        "PermissionsGranted before MemberAdded for {} in group {} ({}), auto-adding member",
+                        member, group_id, e
                     );
+                    // Auto-add the member so the grant is not silently lost.
+                    // This handles the case where the subscription window missed the
+                    // preceding MemberAdded event (e.g., snapshot was restored but a
+                    // new PermissionsGranted arrived before the store was fully rebuilt).
+                    self.membership_store
+                        .add_member(group_id, member, permissions.clone());
                 }
             }
 

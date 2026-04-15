@@ -57,6 +57,16 @@ pub struct Config {
     /// Default: 50, set via WALRUS_SYNC_MESSAGE_THRESHOLD env var.
     /// Set to 0 to disable message-count-based syncing (interval-only).
     pub walrus_sync_message_threshold: usize,
+
+    /// Path for membership snapshot file (optional).
+    /// When set, membership state is loaded from this file on startup and saved
+    /// periodically so the store survives relayer restarts.
+    /// Default: None (disabled)
+    pub membership_snapshot_path: Option<String>,
+
+    /// How often to save the membership snapshot (in seconds).
+    /// Default: 60
+    pub membership_snapshot_interval_secs: u64,
 }
 
 impl Config {
@@ -139,6 +149,16 @@ impl Config {
             .and_then(|v| v.parse().ok())
             .unwrap_or(50);
 
+        // Membership snapshot: path to JSON file for persisting membership across restarts
+        let membership_snapshot_path = env::var("MEMBERSHIP_SNAPSHOT_PATH")
+            .ok()
+            .filter(|s| !s.is_empty());
+
+        let membership_snapshot_interval_secs = env::var("MEMBERSHIP_SNAPSHOT_INTERVAL_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(60);
+
         let config = Self {
             port,
             request_ttl_seconds,
@@ -152,6 +172,8 @@ impl Config {
             walrus_sync_interval_secs,
             walrus_sync_batch_size,
             walrus_sync_message_threshold,
+            membership_snapshot_path,
+            membership_snapshot_interval_secs,
         };
 
         info!("Configuration loaded: {:?}", config);
@@ -174,6 +196,8 @@ impl Default for Config {
             walrus_sync_interval_secs: 3600,
             walrus_sync_batch_size: 100,
             walrus_sync_message_threshold: 50,
+            membership_snapshot_path: None,
+            membership_snapshot_interval_secs: 60,
         }
     }
 }
