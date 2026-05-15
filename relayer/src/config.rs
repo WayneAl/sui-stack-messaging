@@ -67,6 +67,12 @@ pub struct Config {
     /// How often to save the membership snapshot (in seconds).
     /// Default: 60
     pub membership_snapshot_interval_secs: u64,
+
+    /// Path for Walrus quilt blob ID registry (optional).
+    /// When set, quilt blob IDs are appended here after every sync so that
+    /// messages can be restored from Walrus on startup after a restart.
+    /// Default: None (disabled)
+    pub walrus_quilt_registry_path: Option<String>,
 }
 
 impl Config {
@@ -159,6 +165,10 @@ impl Config {
             .and_then(|v| v.parse().ok())
             .unwrap_or(60);
 
+        let walrus_quilt_registry_path = env::var("WALRUS_QUILT_REGISTRY_PATH")
+            .ok()
+            .filter(|s| !s.is_empty());
+
         let config = Self {
             port,
             request_ttl_seconds,
@@ -174,6 +184,7 @@ impl Config {
             walrus_sync_message_threshold,
             membership_snapshot_path,
             membership_snapshot_interval_secs,
+            walrus_quilt_registry_path,
         };
 
         info!("Configuration loaded: {:?}", config);
@@ -198,6 +209,7 @@ impl Default for Config {
             walrus_sync_message_threshold: 50,
             membership_snapshot_path: None,
             membership_snapshot_interval_secs: 60,
+            walrus_quilt_registry_path: None,
         }
     }
 }

@@ -175,4 +175,10 @@ pub trait StorageAdapter: Send + Sync {
         status: SyncStatus,
         limit: usize,
     ) -> StorageResult<Vec<Message>>;
+
+    /// Restores a message from Walrus backup without re-assigning order.
+    /// Preserves the original message ID, order, and all fields.
+    /// - If a message with the same ID already exists and is newer, this is a no-op.
+    /// - Updates the group_orders counter so future messages get correct order values.
+    async fn restore_message(&self, message: Message) -> StorageResult<()>;
 }

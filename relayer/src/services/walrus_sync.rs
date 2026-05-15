@@ -24,6 +24,29 @@ use crate::storage::StorageAdapter;
 use crate::walrus::types::QuiltPatchMetadata;
 use crate::walrus::WalrusClient;
 
+/// Appends a quilt blob ID to the registry file so it can be restored on startup.
+fn append_to_quilt_registry(registry_path: &str, blob_id: &str) {
+    // Read existing IDs (or start fresh)
+    let mut ids: Vec<String> = std::fs::read_to_string(registry_path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+
+    if !ids.contains(&blob_id.to_string()) {
+        ids.push(blob_id.to_string());
+        match serde_json::to_string(&ids) {
+            Ok(json) => {
+                if let Err(e) = std::fs::write(registry_path, json) {
+                    warn!("Failed to write quilt registry '{}': {}", registry_path, e);
+                } else {
+                    debug!("Registered quilt blob ID {} in '{}'", blob_id, registry_path);
+                }
+            }
+            Err(e) => warn!("Failed to serialize quilt registry: {}", e),
+        }
+    }
+}
+
 /// Prefix for message patch identifiers in Walrus quilts.
 /// Must match MSG_PREFIX in walrus-discovery-indexer/src/constants.ts
 const MSG_PREFIX: &str = "msg-";
@@ -48,6 +71,8 @@ pub struct WalrusSyncService {
     sync_rx: mpsc::UnboundedReceiver<()>,
     /// How many new messages trigger an immediate sync (0 = disabled, interval-only)
     message_threshold: usize,
+    /// Path to append quilt blob IDs for restore-on-startup (None = disabled)
+    quilt_registry_path: Option<String>,
 }
 
 impl WalrusSyncService {
@@ -65,6 +90,7 @@ impl WalrusSyncService {
             storage_epochs: config.walrus_storage_epochs,
             sync_rx,
             message_threshold: config.walrus_sync_message_threshold,
+            quilt_registry_path: config.walrus_quilt_registry_path.clone(),
         }
     }
 
@@ -221,12 +247,20 @@ impl WalrusSyncService {
             .store_quilt(patches, Some(metadata), self.storage_epochs)
             .await?;
 
+        let blob_id = response.quilt_blob_id().unwrap_or("unknown");
         info!(
             "Quilt stored on Walrus ({}). Blob ID: {}, patches: {}",
             label,
-            response.quilt_blob_id().unwrap_or("unknown"),
+            blob_id,
             response.stored_quilt_blobs.len()
         );
+
+        // Persist the blob ID so messages can be restored from Walrus after a restart
+        if let (Some(ref registry_path), Some(id)) =
+            (&self.quilt_registry_path, response.quilt_blob_id())
+        {
+            append_to_quilt_registry(registry_path, id);
+        }
 
         // 4. Update each message's sync_status with its new quilt_patch_id
         for msg in &messages {

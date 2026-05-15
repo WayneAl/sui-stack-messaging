@@ -26,7 +26,9 @@ use tracing::info;
 use auth::{auth_middleware, create_membership_store, AuthState};
 
 // Import background services
-use services::{load_snapshot, run_snapshot_loop, MembershipSyncService, WalrusSyncService};
+use services::{
+    load_snapshot, restore_from_walrus, run_snapshot_loop, MembershipSyncService, WalrusSyncService,
+};
 
 // Import Walrus client
 use walrus::WalrusClient;
@@ -75,6 +77,11 @@ async fn main() {
         tokio::spawn(async move {
             run_snapshot_loop(path, store_for_snapshot, interval_secs).await;
         });
+    }
+
+    // Restore messages from Walrus quilts if a registry file is configured
+    if let Some(ref registry_path) = config.walrus_quilt_registry_path {
+        restore_from_walrus(registry_path, &walrus_client, &storage).await;
     }
 
     // Start the Walrus sync service (runs in background, uploads pending messages)

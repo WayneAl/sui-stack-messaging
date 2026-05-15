@@ -228,6 +228,41 @@ impl StorageAdapter for InMemoryStorage {
 
         Ok(filtered)
     }
+
+    async fn restore_message(&self, message: Message) -> StorageResult<()> {
+        // Update group_orders so future messages get correct order values
+        if let Some(order) = message.order {
+            let mut orders = self
+                .group_orders
+                .write()
+                .map_err(|e| StorageError::OperationFailed(format!("Lock poisoned: {}", e)))?;
+            let current = orders.get(&message.group_id).copied().unwrap_or(0);
+            if order > current {
+                orders.insert(message.group_id.clone(), order);
+            }
+        }
+
+        let mut messages = self
+            .messages
+            .write()
+            .map_err(|e| StorageError::OperationFailed(format!("Lock poisoned: {}", e)))?;
+
+        // If message already exists, only replace if this version is newer
+        if let Some(existing) = messages.get(&message.id) {
+            if existing.updated_at >= message.updated_at {
+                return Ok(()); // already have a newer or equal version
+            }
+        }
+
+        let mut nonces = self
+            .nonces
+            .write()
+            .map_err(|e| StorageError::OperationFailed(format!("Lock poisoned: {}", e)))?;
+        nonces.insert(message.nonce.clone());
+        messages.insert(message.id, message);
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

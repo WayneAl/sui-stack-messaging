@@ -179,7 +179,6 @@ impl WalrusClient {
     ///
     /// # Returns
     /// The raw bytes of the patch (in our case, a serialized message)
-    #[allow(dead_code)]
     pub async fn read_by_patch_id(&self, patch_id: &str) -> WalrusResult<Vec<u8>> {
         let url = format!(
             "{}/v1/blobs/by-quilt-patch-id/{}",
@@ -270,7 +269,6 @@ impl WalrusClient {
     ///
     /// # Returns
     /// List of `PatchInfo` with identifier and QuiltPatchId for each patch
-    #[allow(dead_code)]
     pub async fn list_patches(&self, quilt_blob_id: &str) -> WalrusResult<Vec<PatchInfo>> {
         let url = format!(
             "{}/v1/quilts/{}/patches",
